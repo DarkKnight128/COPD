@@ -1,0 +1,106 @@
+{
+  "patient": {
+    "patient_id": "P_TEST_001",
+    "age": 68,
+    "sex": "男",
+    "bmi": 21.8,
+    "smoking_history": "40包年，已戒烟3年",
+    "comorbidity": ["高血压", "2型糖尿病"]
+  },
+  "timeline_events": [
+    {
+      "date": "2025-09-12",
+      "event_type": "急性加重",
+      "event_detail": "咳嗽咳痰及活动后气促加重，门诊治疗",
+      "severity": "门诊级"
+    },
+    {
+      "date": "2025-12-05",
+      "event_type": "急性加重住院",
+      "event_detail": "呼吸困难加重，住院治疗",
+      "severity": "住院级"
+    },
+    {
+      "date": "2026-03-18",
+      "event_type": "急性加重住院",
+      "event_detail": "再次因呼吸困难加重住院",
+      "severity": "住院级"
+    },
+    {
+      "date": "2026-05-20",
+      "event_type": "再住院",
+      "event_detail": "90天内再住院记录为真",
+      "severity": "住院级"
+    }
+  ],
+  "clinical_tests": [
+    {
+      "date": "2025-12-06",
+      "CAT": 21,
+      "mMRC": 2,
+      "FEV1": 1.18,
+      "FVC": 2.42,
+      "FEV1_FVC": 0.49,
+      "FEV1_percent_predicted": 48,
+      "FeNO": 30,
+      "eosinophil_count": 0.28,
+      "CRP": 18.2,
+      "PCT": 0.12,
+      "WBC": 9.8,
+      "neutrophil_percent": 72.0
+    },
+    {
+      "date": "2026-05-10",
+      "CAT": 24,
+      "mMRC": 3,
+      "FEV1": 1.05,
+      "FVC": 2.30,
+      "FEV1_FVC": 0.46,
+      "FEV1_percent_predicted": 42,
+      "FeNO": 38,
+      "eosinophil_count": 0.36,
+      "CRP": 28.5,
+      "PCT": 0.18,
+      "WBC": 11.2,
+      "neutrophil_percent": 78.5
+    }
+  ],
+  "ct_records": [
+    {
+      "date": "2026-05-08",
+      "ct_feature": {
+        "emphysema_level": "中重度",
+        "airway_wall_thickening": "明显",
+        "infection_sign": "右下肺斑片影"
+      },
+      "ct_report": "双肺透亮度增高，肺气肿改变；支气管壁增厚；右下肺可见少许斑片影，考虑感染性改变可能。",
+      "data_type": "CT报告及已提取影像特征"
+    }
+  ],
+  "pathogen_tests": [
+    {
+      "date": "2026-05-09",
+      "sample_type": "BALF",
+      "method": "mNGS",
+      "mNGS_result": [
+        {
+          "pathogen": "流感嗜血杆菌",
+          "relative_abundance": 0.42
+        },
+        {
+          "pathogen": "肺炎链球菌",
+          "relative_abundance": 0.11
+        }
+      ]
+    }
+  ],
+  "medication": {
+    "maintenance": ["LAMA/LABA"],
+    "recent_treatment": ["抗生素", "短期糖皮质激素"]
+  },
+  "follow_up": {
+    "readmission_within_90_days": true,
+    "survival_status": "存活",
+    "follow_up_months": 6
+  }
+}
