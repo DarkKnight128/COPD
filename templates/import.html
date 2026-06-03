@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <h1>样例数据导入</h1>
+  <p class="muted">POC 支持导入现有 Excel 样例数据，覆盖 Patients、Visits、Labs、ModelOutputs。</p>
+  <div class="panel">
+    <div class="kv">
+      <span>默认样例文件</span>
+      <strong>{{ default_sample_path }}</strong>
+    </div>
+    <div class="kv">
+      <span>文件状态</span>
+      <strong>{{ "已找到" if default_sample_exists else "未找到" }}</strong>
+    </div>
+    <form method="post" action="/import-demo">
+      <button class="primary" type="submit">导入桌面样例数据</button>
+    </form>
+  </div>
+</section>
+{% endblock %}

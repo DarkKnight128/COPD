@@ -9,6 +9,12 @@ FORBIDDEN_TERMS = [
     "增加ICS",
     "使用抗生素",
     "由某病原体引起",
+    "替代医生诊断",
+    "直接诊断",
+    "最终诊断",
+    "治疗方案",
+    "推荐用药",
+    "处方",
 ]
 
 
@@ -19,6 +25,7 @@ def safety_check(state: COPDState) -> COPDState:
         str(state.get("phenotype", {})),
         str(state.get("risk_assessment", {})),
         str(state.get("key_evidence", [])),
+        state.get("report_draft", ""),
     ]
     combined_text = "\n".join(text_fields)
     matched_terms = [term for term in FORBIDDEN_TERMS if term in combined_text]

@@ -3,3 +3,6 @@ langchain-core
 pydantic
 python-dotenv
 pytest
+fastapi
+uvicorn
+jinja2

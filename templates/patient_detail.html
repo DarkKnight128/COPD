@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>患者总览：{{ patient.patient_id }}</h1>
+      <p class="muted">核心信息、最近一次临床数据和智能评估入口。</p>
+    </div>
+    <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+      <button class="primary" type="submit">触发智能评估</button>
+    </form>
+  </div>
+  <div class="grid">
+    <div class="panel">
+      <h2>基础信息</h2>
+      <p>性别：{{ patient.sex }}</p>
+      <p>年龄：{{ patient.age }}</p>
+      <p>吸烟：{{ patient.smoking_pack_years }} 包年</p>
+      <p>共病：{{ patient.comorbidity }}</p>
+    </div>
+    <div class="panel">
+      <h2>症状与肺功能</h2>
+      <p>CAT：{{ patient.CAT_score }}</p>
+      <p>mMRC：{{ patient.mMRC_score }}</p>
+      <p>FEV1：{{ patient.FEV1_L }} L</p>
+      <p>FVC：{{ patient.FVC_L }} L</p>
+      <p>FEV1/FVC：{{ patient.FEV1_FVC }}</p>
+    </div>
+    <div class="panel">
+      <h2>CT 与用药</h2>
+      <p>肺气肿比例：{{ patient.ct_feature_emphysema_pct }}%</p>
+      <p>气道壁增厚：{{ patient.ct_feature_airway_wall_thickening }}</p>
+      <p>当前用药：{{ patient.current_medication }}</p>
+      <p>{{ patient.ct_report_summary }}</p>
+    </div>
+    <div class="panel">
+      <h2>随访与模型输出</h2>
+      <p>近一年急性加重：{{ patient.exacerbation_count_1y }} 次</p>
+      <p>90天再住院：{{ patient.readmission_90d }}</p>
+      <p>生存状态：{{ patient.survival_status }}</p>
+      <p>Mock 风险：{{ model_output.exacerbation_risk_level if model_output else "未提供" }}</p>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="button" href="/patients/{{ patient.patient_id }}/timeline">查看病程时间轴</a>
+    <a class="button" href="/patients/{{ patient.patient_id }}/assessment">查看评估结果</a>
+  </div>
+</section>
+{% endblock %}

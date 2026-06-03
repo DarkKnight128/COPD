@@ -13,7 +13,7 @@ class COPDState(TypedDict, total=False):
     phenotype: Dict[str, Any]
     risk_assessment: Dict[str, Any]
 
-    key_evidence: List[Dict[str, str]]
+    key_evidence: List[Dict[str, Any]]
     treatment_response_observations: List[str]
 
     safety_check_result: Dict[str, Any]

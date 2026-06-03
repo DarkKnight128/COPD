@@ -53,9 +53,15 @@ def assessment_generator(state: COPDState) -> COPDState:
     if not phenotype_tags:
         phenotype_tags.append(main_phenotype)
 
+    fev1_percent = latest_test.get("FEV1_percent_predicted")
+    if fev1_percent in ("", None, "未知"):
+        lung_function_text = f"FEV1为{latest_test.get('FEV1', '未知')}L"
+    else:
+        lung_function_text = f"FEV1占预计值{fev1_percent}%"
+
     current_summary = (
         f"最近一次评估CAT为{cat}，mMRC为{mmrc}，"
-        f"FEV1占预计值{latest_test.get('FEV1_percent_predicted', '未知')}%，"
+        f"{lung_function_text}，"
         f"近阶段记录到{exacerbation_count}次急性加重相关事件。"
     )
 

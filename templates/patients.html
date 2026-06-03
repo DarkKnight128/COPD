@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>患者列表</h1>
+      <p class="muted">展示已导入患者、风险等级和最近评估状态。</p>
+    </div>
+    <a class="button" href="/import">导入数据</a>
+  </div>
+  <form class="search" method="get" action="/patients">
+    <input name="q" value="{{ q }}" placeholder="按患者 ID 检索">
+    <button type="submit">检索</button>
+  </form>
+  <table>
+    <thead>
+      <tr>
+        <th>患者ID</th>
+        <th>性别</th>
+        <th>年龄</th>
+        <th>CAT</th>
+        <th>mMRC</th>
+        <th>风险等级</th>
+        <th>评估状态</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for patient in patients %}
+      <tr>
+        <td>{{ patient.patient_id }}</td>
+        <td>{{ patient.sex }}</td>
+        <td>{{ patient.age }}</td>
+        <td>{{ patient.cat_score }}</td>
+        <td>{{ patient.mmrc_score }}</td>
+        <td><span class="badge">{{ patient.risk_level }}</span></td>
+        <td>{{ patient.assessment_status }}</td>
+        <td><a href="/patients/{{ patient.patient_id }}">查看详情</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

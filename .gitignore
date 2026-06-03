@@ -7,3 +7,7 @@ __pycache__/
 data/private/
 outputs/
 *.log
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+data/*.tmp

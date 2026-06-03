@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>病程时间轴：{{ patient.patient_id }}</h1>
+      <p class="muted">按时间展示门诊、住院、检验、用药、急性加重和随访事件。</p>
+    </div>
+    <a class="button" href="/patients/{{ patient.patient_id }}">返回总览</a>
+  </div>
+  <ol class="timeline">
+    {% for event in events %}
+    <li>
+      <time>{{ event.date }}</time>
+      <div>
+        <strong>{{ event.title }}</strong>
+        <p>{{ event.detail }}</p>
+        {% if event.severity %}<span class="badge">{{ event.severity }}</span>{% endif %}
+      </div>
+    </li>
+    {% else %}
+    <li class="empty">暂无病程事件。</li>
+    {% endfor %}
+  </ol>
+</section>
+{% endblock %}

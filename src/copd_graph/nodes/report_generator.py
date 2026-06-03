@@ -34,7 +34,7 @@ def report_generator(state: COPDState) -> COPDState:
             "",
             "## 辅助评估免责声明",
             "本报告为规则占位生成的辅助评估草稿，仅用于研发和流程验证；不能替代医生临床判断，"
-            "不得作为独立诊疗依据。当前阶段不输出具体治疗方案。",
+            "不得作为独立诊疗依据。当前阶段不提供用药或处置建议。",
         ]
     )
     return {"report_draft": report}

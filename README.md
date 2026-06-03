@@ -1,92 +1,102 @@
-# COPD LangGraph 智能辅助评估骨架
+# COPD LangGraph 智能辅助评估 POC
 
-本项目是一个慢阻肺病智能诊疗决策支持系统的 LangGraph 评估流程骨架。当前阶段只关注本地可运行、结构清晰、便于扩展的评估编排，不包含前端、后端、数据库、模型部署或真实患者数据。
-
-## 当前阶段目标
-
-- 初始化一个 Python + LangGraph 项目结构。
-- 定义 COPDState 作为图流程共享状态。
-- 搭建最小评估流程，并让所有节点按固定顺序执行。
-- 使用规则和模板生成一份辅助评估草稿。
-- 提供样例患者 JSON 和本地运行脚本，方便新同学快速验证。
-
-## 当前做什么
-
-- 读取样例患者输入数据。
-- 执行基础数据质量检查。
-- 拼接病程摘要。
-- 用简单规则生成当前状态、表型和风险评估。
-- 整理关键证据。
-- 检查潜在越界表达。
-- 生成不包含具体治疗方案的报告草稿。
-
-## 当前不做什么
-
-- 不做前端、FastAPI 后端、数据库或 Docker。
-- 不接入 Qwen 模型、bge-m3 embedding 或模型权重。
-- 不处理真实患者数据、原始 CT 图像或 DICOM。
-- 不做医生复核页面、报告导出、HIS/PACS/EMR 接口。
-- 不输出具体治疗方案。
-
-## 目录结构
+这是一个慢阻肺病智能诊疗决策支持系统的第 3-4 周 POC Demo。当前目标是跑通内部演示主流程：
 
 ```text
-copd-langgraph/
-  README.md
-  .gitignore
-  requirements.txt
-
-  data/
-    sample_patient.json
-
-  src/
-    copd_graph/
-      __init__.py
-      state.py
-      graph.py
-      nodes/
-        __init__.py
-        load_patient_data.py
-        data_quality_check.py
-        timeline_analyzer.py
-        assessment_generator.py
-        evidence_builder.py
-        safety_check.py
-        report_generator.py
-
-  scripts/
-    run_sample.py
-
-  tests/
-    test_graph_import.py
+导入 20-50 例样例数据
+-> 患者列表与检索
+-> 患者总览
+-> 病程时间轴
+-> 触发 LangGraph 智能评估
+-> 展示结构化评估结果
+-> 生成报告草稿
 ```
+
+当前仍然是 POC，不处理原始 CT、DICOM、PACS、HIS、EMR，也不输出具体用药或处置建议。
+
+## 当前能力
+
+- 本地 FastAPI + SQLite + Jinja 页面 Demo。
+- 支持导入现有 Excel 样例数据：
+  - `Patients`
+  - `Visits`
+  - `Labs`
+  - `ModelOutputs`
+- 提供 5 个核心页面：
+  - 患者列表页
+  - 患者总览页
+  - 病程时间轴页
+  - 智能评估结果页
+  - 报告生成页
+- 保留 LangGraph 最小节点顺序：
+  - `load_patient_data`
+  - `data_quality_check`
+  - `timeline_analyzer`
+  - `assessment_generator`
+  - `evidence_builder`
+  - `safety_check`
+  - `report_generator`
+- `key_evidence` 已增强为可追踪结构，包含 `source`、`source_dates`、`source_fields`。
 
 ## 安装依赖
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+.venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-## 运行 Sample
+## 运行单患者 LangGraph Sample
 
 ```bash
-python scripts/run_sample.py
+python scripts\run_sample.py
 ```
 
-脚本会读取 `data/sample_patient.json`，构造初始 state，调用 LangGraph，并打印数据质量、病程摘要、当前状态、表型、风险评估、关键证据、安全检查结果和报告草稿。
-
-## 运行测试
+## 启动 POC Demo
 
 ```bash
-pytest
+python scripts\run_poc_server.py
 ```
 
-## 后续扩展方向
+启动后访问：
 
-- 将 `load_patient_data` 扩展为标准化数据导入节点。
-- 将规则占位节点逐步替换为可配置评估逻辑或大模型调用。
-- 增加更完整的数据质量检查和结构化错误处理。
-- 加入报告结构化输出、医生复核状态和审计字段。
-- 增加更多样例数据和面向节点的单元测试。
+```text
+http://127.0.0.1:8000
+```
+
+默认导入按钮会读取：
+
+```text
+C:\Users\Owner\Desktop\plan\copd_mock_data_v1(1).xlsx
+```
+
+## API
+
+- `POST /api/import/patients`
+- `GET /api/patients?q=`
+- `GET /api/patients/{patient_id}`
+- `GET /api/patients/{patient_id}/timeline`
+- `POST /api/patients/{patient_id}/assessment`
+- `GET /api/assessments/{assessment_id}`
+- `POST /api/assessments/{assessment_id}/report`
+
+## 测试
+
+当前环境如果还没有安装 pytest，也可以直接运行：
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+如果已安装 pytest：
+
+```bash
+python -m pytest -q
+```
+
+## POC 边界
+
+- CT 只使用报告文本或已提取影像特征。
+- mNGS/病原学结果只作为感染相关线索。
+- 报告仅为辅助评估草稿，不能替代医生临床判断。
+- 当前不做医生复核、报告编辑导出、权限、日志和版本管理；这些留到 MVP 增量阶段。

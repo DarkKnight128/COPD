@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>报告生成页</h1>
+      <p class="muted">报告为辅助评估草稿，不替代医生临床判断。</p>
+    </div>
+    <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
+  </div>
+  <article class="report">{{ report }}</article>
+</section>
+{% endblock %}

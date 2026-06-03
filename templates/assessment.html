@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>智能评估结果：{{ patient.patient_id }}</h1>
+      <p class="muted">展示数据质量、摘要、表型、风险和关键证据。</p>
+    </div>
+    <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+      <button class="primary" type="submit">重新评估</button>
+    </form>
+  </div>
+  {% if assessment %}
+  <div class="grid">
+    <div class="panel">
+      <h2>数据质量</h2>
+      <pre>{{ assessment.data_quality | tojson(indent=2) }}</pre>
+    </div>
+    <div class="panel">
+      <h2>表型与风险</h2>
+      <pre>{{ assessment.phenotype | tojson(indent=2) }}</pre>
+      <pre>{{ assessment.risk_assessment | tojson(indent=2) }}</pre>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>病程摘要</h2>
+    <p>{{ assessment.patient_timeline_summary }}</p>
+    <h2>当前状态</h2>
+    <p>{{ assessment.patient_current_summary }}</p>
+  </div>
+  <div class="panel">
+    <h2>关键证据</h2>
+    <ul class="evidence">
+      {% for item in assessment.key_evidence %}
+      <li>
+        <strong>{{ item.evidence }}</strong>
+        <span>来源：{{ item.source }}</span>
+        <span>日期：{{ item.source_dates | join(", ") }}</span>
+        <span>字段：{{ item.source_fields | join(", ") }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  <div class="panel">
+    <h2>安全检查</h2>
+    <pre>{{ assessment.safety_check_result | tojson(indent=2) }}</pre>
+  </div>
+  <div class="actions">
+    <a class="button" href="/assessments/{{ assessment.assessment_id }}/report">查看报告草稿</a>
+  </div>
+  {% else %}
+  <div class="panel empty">该患者暂无评估结果，请先触发智能评估。</div>
+  {% endif %}
+</section>
+{% endblock %}
