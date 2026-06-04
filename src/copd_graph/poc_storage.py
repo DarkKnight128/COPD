@@ -187,6 +187,32 @@ def list_patients(connection: sqlite3.Connection, query: str = "") -> List[Dict[
     return patients
 
 
+def delete_patients(connection: sqlite3.Connection, patient_ids: Iterable[str]) -> Dict[str, int]:
+    init_database(connection)
+    ids = [str(patient_id).strip() for patient_id in patient_ids if str(patient_id).strip()]
+    if not ids:
+        return {
+            "requested": 0,
+            "patients": 0,
+            "visits": 0,
+            "labs": 0,
+            "model_outputs": 0,
+            "assessments": 0,
+        }
+
+    counts = {"requested": len(ids)}
+    for table_name in ["visits", "labs", "model_outputs", "assessments", "patients"]:
+        deleted = 0
+        for patient_id in ids:
+            cursor = connection.execute(
+                f"DELETE FROM {table_name} WHERE patient_id = ?", (patient_id,)
+            )
+            deleted += cursor.rowcount if cursor.rowcount != -1 else 0
+        counts[table_name] = deleted
+    connection.commit()
+    return counts
+
+
 def get_patient_bundle(connection: sqlite3.Connection, patient_id: str) -> Dict[str, Any] | None:
     init_database(connection)
     row = connection.execute(

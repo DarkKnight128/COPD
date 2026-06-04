@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -14,6 +14,7 @@ from copd_graph.poc_storage import (
     DEFAULT_DB_PATH,
     build_patient_state_data,
     connect,
+    delete_patients,
     get_assessment,
     get_latest_assessment,
     get_patient_bundle,
@@ -66,6 +67,20 @@ def patients_page(request: Request, q: str = "") -> HTMLResponse:
     with connect(DEFAULT_DB_PATH) as connection:
         patients = list_patients(connection, q)
     return templates.TemplateResponse(request, "patients.html", {"patients": patients, "q": q})
+
+
+@app.post("/patients/delete")
+def delete_patients_page(patient_ids: list[str] = Form(default=[])) -> RedirectResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        delete_patients(connection, patient_ids)
+    return RedirectResponse(url="/patients", status_code=303)
+
+
+@app.post("/patients/{patient_id}/delete")
+def delete_patient_page(patient_id: str) -> RedirectResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        delete_patients(connection, [patient_id])
+    return RedirectResponse(url="/patients", status_code=303)
 
 
 @app.get("/patients/{patient_id}", response_class=HTMLResponse)
@@ -164,6 +179,24 @@ def api_patients(q: str = "") -> Dict[str, Any]:
     with connect(DEFAULT_DB_PATH) as connection:
         patients = list_patients(connection, q)
     return {"patients": patients, "count": len(patients)}
+
+
+@app.post("/api/patients/delete")
+async def api_delete_patients(request: Request) -> Dict[str, Any]:
+    payload = await request.json()
+    patient_ids = payload.get("patient_ids", [])
+    if not isinstance(patient_ids, list):
+        raise HTTPException(status_code=400, detail="patient_ids must be a list")
+    with connect(DEFAULT_DB_PATH) as connection:
+        counts = delete_patients(connection, patient_ids)
+    return {"deleted": counts}
+
+
+@app.delete("/api/patients/{patient_id}")
+def api_delete_patient(patient_id: str) -> Dict[str, Any]:
+    with connect(DEFAULT_DB_PATH) as connection:
+        counts = delete_patients(connection, [patient_id])
+    return {"deleted": counts}
 
 
 @app.get("/api/patients/{patient_id}")

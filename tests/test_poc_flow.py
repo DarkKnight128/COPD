@@ -15,6 +15,8 @@ from copd_graph.graph import build_graph  # noqa: E402
 from copd_graph.poc_storage import (  # noqa: E402
     build_patient_state_data,
     connect,
+    delete_patients,
+    get_latest_assessment,
     import_workbook,
     list_patients,
 )
@@ -122,6 +124,27 @@ class PocFlowTest(unittest.TestCase):
         self.assertNotIn("建议使用", result["report_draft"])
         self.assertNotIn("治疗方案", result["report_draft"])
 
+    def test_storage_deletes_patient_and_related_records(self):
+        with connect(TEST_DB_PATH) as connection:
+            patients = list_patients(connection, "TEST-001")
+            self.assertEqual(len(patients), 1)
+            result = build_graph().invoke(
+                {"raw_patient_data": build_patient_state_data(connection, "TEST-001")}
+            )
+            from copd_graph.poc_storage import save_assessment
+
+            save_assessment(connection, "TEST-001", result)
+            self.assertIsNotNone(get_latest_assessment(connection, "TEST-001"))
+
+            counts = delete_patients(connection, ["TEST-001"])
+
+            self.assertEqual(counts["patients"], 1)
+            self.assertGreaterEqual(counts["visits"], 2)
+            self.assertGreaterEqual(counts["labs"], 1)
+            self.assertGreaterEqual(counts["assessments"], 1)
+            self.assertEqual(list_patients(connection, "TEST-001"), [])
+            self.assertIsNone(get_latest_assessment(connection, "TEST-001"))
+
     def test_web_api_and_pages_are_available(self):
         from copd_graph import web_app
 
@@ -145,6 +168,36 @@ class PocFlowTest(unittest.TestCase):
         report_response = client.post(f"/api/assessments/{assessment_id}/report")
         self.assertEqual(report_response.status_code, 200)
         self.assertIn("辅助评估报告草稿", report_response.json()["report_draft"])
+
+    def test_web_delete_single_and_bulk_patients(self):
+        from copd_graph import web_app
+
+        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_40.xlsx"
+        web_app.DEFAULT_DB_PATH = TEST_DB_PATH
+        client = TestClient(web_app.app)
+        with sample_path.open("rb") as file:
+            client.post(
+                "/api/import/patients",
+                files={
+                    "file": (
+                        "copd_patient_import_sample_40.xlsx",
+                        file,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+            )
+
+        single = client.delete("/api/patients/COPD-S001")
+        self.assertEqual(single.status_code, 200)
+        self.assertEqual(client.get("/api/patients?q=COPD-S001").json()["count"], 0)
+
+        bulk = client.post(
+            "/api/patients/delete",
+            json={"patient_ids": ["COPD-S002", "COPD-S003"]},
+        )
+        self.assertEqual(bulk.status_code, 200)
+        self.assertEqual(client.get("/api/patients?q=COPD-S002").json()["count"], 0)
+        self.assertEqual(client.get("/api/patients?q=COPD-S003").json()["count"], 0)
 
     def test_api_imports_new_template_xlsx_upload(self):
         from copd_graph import web_app

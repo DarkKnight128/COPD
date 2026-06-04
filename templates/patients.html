@@ -12,35 +12,47 @@
     <input name="q" value="{{ q }}" placeholder="按患者 ID 检索">
     <button type="submit">检索</button>
   </form>
-  <table>
-    <thead>
-      <tr>
-        <th>患者ID</th>
-        <th>性别</th>
-        <th>年龄</th>
-        <th>CAT</th>
-        <th>mMRC</th>
-        <th>风险等级</th>
-        <th>评估状态</th>
-        <th>操作</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for patient in patients %}
-      <tr>
-        <td>{{ patient.patient_id }}</td>
-        <td>{{ patient.sex }}</td>
-        <td>{{ patient.age }}</td>
-        <td>{{ patient.cat_score }}</td>
-        <td>{{ patient.mmrc_score }}</td>
-        <td><span class="badge">{{ patient.risk_level }}</span></td>
-        <td>{{ patient.assessment_status }}</td>
-        <td><a href="/patients/{{ patient.patient_id }}">查看详情</a></td>
-      </tr>
-      {% else %}
-      <tr><td colspan="8" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
+  <form method="post" action="/patients/delete" onsubmit="return confirm('确认删除选中的患者数据？该操作会同时删除关联时间轴、检验、模型输出和评估结果。');">
+    <div class="table-actions">
+      <button class="danger" type="submit">删除选中</button>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th class="select-col"><input type="checkbox" aria-label="全选" onclick="document.querySelectorAll('input[name=patient_ids]').forEach(item => item.checked = this.checked)"></th>
+          <th>患者ID</th>
+          <th>性别</th>
+          <th>年龄</th>
+          <th>CAT</th>
+          <th>mMRC</th>
+          <th>风险等级</th>
+          <th>评估状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for patient in patients %}
+        <tr>
+          <td class="select-col"><input type="checkbox" name="patient_ids" value="{{ patient.patient_id }}" aria-label="选择 {{ patient.patient_id }}"></td>
+          <td>{{ patient.patient_id }}</td>
+          <td>{{ patient.sex }}</td>
+          <td>{{ patient.age }}</td>
+          <td>{{ patient.cat_score }}</td>
+          <td>{{ patient.mmrc_score }}</td>
+          <td><span class="badge">{{ patient.risk_level }}</span></td>
+          <td>{{ patient.assessment_status }}</td>
+          <td class="row-actions">
+            <div class="action-links">
+              <a href="/patients/{{ patient.patient_id }}">查看详情</a>
+              <button class="link-danger" type="submit" formaction="/patients/{{ patient.patient_id }}/delete" onclick="return confirm('确认删除患者 {{ patient.patient_id }} 的全部数据？');">删除</button>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </form>
 </section>
 {% endblock %}

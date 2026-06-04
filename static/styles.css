@@ -99,6 +99,12 @@ h2 {
   gap: 10px;
 }
 
+.table-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .upload-form {
   align-items: center;
   display: flex;
@@ -153,6 +159,19 @@ button,
   color: #ffffff;
 }
 
+.danger {
+  background: #a12d25;
+  border-color: #a12d25;
+  color: #ffffff;
+}
+
+.link-danger {
+  border: 0;
+  color: #a12d25;
+  min-height: auto;
+  padding: 0;
+}
+
 table {
   background: #ffffff;
   border-collapse: collapse;
@@ -171,6 +190,21 @@ td {
 th {
   background: #edf3f3;
   color: #34494f;
+}
+
+.select-col {
+  text-align: center;
+  width: 48px;
+}
+
+.row-actions {
+  white-space: nowrap;
+}
+
+.action-links {
+  align-items: center;
+  display: inline-flex;
+  gap: 12px;
 }
 
 .table-grid {
