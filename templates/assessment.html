@@ -11,40 +11,134 @@
     </form>
   </div>
   {% if assessment %}
-  <div class="grid">
-    <div class="panel">
+  <div class="table-grid">
+    <section class="panel">
       <h2>数据质量</h2>
-      <pre>{{ assessment.data_quality | tojson(indent=2) }}</pre>
-    </div>
-    <div class="panel">
+      <table class="info-table">
+        <tbody>
+          <tr>
+            <th>是否可评估</th>
+            <td><span class="status-pill ok">{{ "可评估" if assessment.data_quality.can_evaluate else "暂不可评估" }}</span></td>
+          </tr>
+          <tr>
+            <th>缺失字段</th>
+            <td>
+              {% if assessment.data_quality.missing_fields %}
+                {{ assessment.data_quality.missing_fields | join("、") }}
+              {% else %}
+                无
+              {% endif %}
+            </td>
+          </tr>
+          <tr>
+            <th>数据提示</th>
+            <td>{{ assessment.data_quality.warnings | join("；") }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="panel">
       <h2>表型与风险</h2>
-      <pre>{{ assessment.phenotype | tojson(indent=2) }}</pre>
-      <pre>{{ assessment.risk_assessment | tojson(indent=2) }}</pre>
-    </div>
+      <table class="info-table">
+        <tbody>
+          <tr>
+            <th>主要表型</th>
+            <td>{{ assessment.phenotype.main_phenotype }}</td>
+          </tr>
+          <tr>
+            <th>相关标签</th>
+            <td class="tag-cell">
+              {% for tag in assessment.phenotype.phenotype_tags %}
+                <span class="badge">{{ tag }}</span>
+              {% endfor %}
+            </td>
+          </tr>
+          <tr>
+            <th>急性加重风险</th>
+            <td><span class="badge risk-{{ assessment.risk_assessment.acute_exacerbation_risk }}">{{ assessment.risk_assessment.acute_exacerbation_risk }}</span></td>
+          </tr>
+          <tr>
+            <th>再住院风险</th>
+            <td><span class="badge risk-{{ assessment.risk_assessment.readmission_risk }}">{{ assessment.risk_assessment.readmission_risk }}</span></td>
+          </tr>
+          <tr>
+            <th>死亡风险</th>
+            <td><span class="badge risk-{{ assessment.risk_assessment.mortality_risk }}">{{ assessment.risk_assessment.mortality_risk }}</span></td>
+          </tr>
+          <tr>
+            <th>依据说明</th>
+            <td>{{ assessment.phenotype.basis }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
   </div>
-  <div class="panel">
-    <h2>病程摘要</h2>
-    <p>{{ assessment.patient_timeline_summary }}</p>
-    <h2>当前状态</h2>
-    <p>{{ assessment.patient_current_summary }}</p>
-  </div>
-  <div class="panel">
+
+  <section class="panel">
+    <h2>摘要信息</h2>
+    <table class="info-table summary-table">
+      <tbody>
+        <tr>
+          <th>病程摘要</th>
+          <td>{{ assessment.patient_timeline_summary }}</td>
+        </tr>
+        <tr>
+          <th>当前状态</th>
+          <td>{{ assessment.patient_current_summary }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
     <h2>关键证据</h2>
-    <ul class="evidence">
-      {% for item in assessment.key_evidence %}
-      <li>
-        <strong>{{ item.evidence }}</strong>
-        <span>来源：{{ item.source }}</span>
-        <span>日期：{{ item.source_dates | join(", ") }}</span>
-        <span>字段：{{ item.source_fields | join(", ") }}</span>
-      </li>
-      {% endfor %}
-    </ul>
-  </div>
-  <div class="panel">
+    <table class="data-table evidence-table">
+      <thead>
+        <tr>
+          <th>证据内容</th>
+          <th>来源</th>
+          <th>日期</th>
+          <th>字段</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in assessment.key_evidence %}
+        <tr>
+          <td>{{ item.evidence }}</td>
+          <td>{{ item.source }}</td>
+          <td>{{ item.source_dates | join("、") }}</td>
+          <td>{{ item.source_fields | join("、") }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
     <h2>安全检查</h2>
-    <pre>{{ assessment.safety_check_result | tojson(indent=2) }}</pre>
-  </div>
+    <table class="info-table">
+      <tbody>
+        <tr>
+          <th>检查结果</th>
+          <td><span class="status-pill ok">{{ "通过" if assessment.safety_check_result.passed else "需人工复核" }}</span></td>
+        </tr>
+        <tr>
+          <th>命中越界词</th>
+          <td>
+            {% if assessment.safety_check_result.matched_terms %}
+              {{ assessment.safety_check_result.matched_terms | join("、") }}
+            {% else %}
+              无
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>说明</th>
+          <td>{{ assessment.safety_check_result.notes }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
   <div class="actions">
     <a class="button" href="/assessments/{{ assessment.assessment_id }}/report">查看报告草稿</a>
   </div>
