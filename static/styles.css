@@ -99,6 +99,34 @@ h2 {
   gap: 10px;
 }
 
+.upload-form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.file-picker {
+  align-items: center;
+  border: 1px dashed #8da5ad;
+  border-radius: 8px;
+  display: inline-flex;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+}
+
+.file-picker span {
+  color: #40545b;
+  font-weight: 700;
+}
+
+.hint {
+  color: #617079;
+  font-size: 13px;
+  margin: 14px 0 0;
+}
+
 input {
   border: 1px solid #c8d2d7;
   border-radius: 6px;

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -22,13 +22,12 @@ from copd_graph.poc_storage import (
     list_patients,
     save_assessment,
 )
-from copd_graph.xlsx_importer import parse_xlsx, parse_xlsx_bytes
+from copd_graph.xlsx_importer import parse_xlsx_bytes
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES_DIR = PROJECT_ROOT / "templates"
 STATIC_DIR = PROJECT_ROOT / "static"
-DEFAULT_SAMPLE_XLSX = Path.home() / "Desktop" / "plan" / "copd_mock_data_v1(1).xlsx"
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -49,22 +48,16 @@ def root() -> RedirectResponse:
 
 @app.get("/import", response_class=HTMLResponse)
 def import_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
-        request,
-        "import.html",
-        {
-            "default_sample_path": str(DEFAULT_SAMPLE_XLSX),
-            "default_sample_exists": DEFAULT_SAMPLE_XLSX.exists(),
-        },
-    )
+    return templates.TemplateResponse(request, "import.html", {})
 
 
-@app.post("/import-demo")
-async def import_demo() -> RedirectResponse:
-    if not DEFAULT_SAMPLE_XLSX.exists():
-        raise HTTPException(status_code=404, detail=f"Sample Excel not found: {DEFAULT_SAMPLE_XLSX}")
+@app.post("/import-upload")
+async def import_upload(file: UploadFile = File(...)) -> RedirectResponse:
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Please upload an .xlsx file")
+    content = await file.read()
     with connect(DEFAULT_DB_PATH) as connection:
-        import_workbook(connection, parse_xlsx(DEFAULT_SAMPLE_XLSX))
+        import_workbook(connection, parse_xlsx_bytes(content))
     return RedirectResponse(url="/patients", status_code=303)
 
 
@@ -157,24 +150,13 @@ def report_page(request: Request, assessment_id: str) -> HTMLResponse:
 
 
 @app.post("/api/import/patients")
-async def api_import_patients(
-    request: Request,
-    source_path: str | None = Query(default=None, description="Optional local xlsx path"),
-) -> Dict[str, Any]:
-    body = await request.body()
-    if body:
-        workbook = parse_xlsx_bytes(body)
-        source = "request body"
-    else:
-        path = Path(source_path) if source_path else DEFAULT_SAMPLE_XLSX
-        if not path.exists():
-            raise HTTPException(status_code=404, detail=f"Excel file not found: {path}")
-        workbook = parse_xlsx(path)
-        source = str(path)
-
+async def api_import_patients(file: UploadFile = File(...)) -> Dict[str, Any]:
+    if not file.filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Please upload an .xlsx file")
+    workbook = parse_xlsx_bytes(await file.read())
     with connect(DEFAULT_DB_PATH) as connection:
         counts = import_workbook(connection, workbook)
-    return {"source": source, "counts": counts}
+    return {"source": file.filename, "counts": counts}
 
 
 @app.get("/api/patients")

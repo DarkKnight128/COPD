@@ -109,7 +109,7 @@ def _read_sheet_rows(
 def _cell_value(cell: ET.Element, shared_strings: List[str]) -> Any:
     cell_type = cell.attrib.get("t")
     if cell_type == "inlineStr":
-        return "".join(text.text or "" for text in cell.iter(f"{NS_MAIN}t"))
+        return _coerce_number("".join(text.text or "" for text in cell.iter(f"{NS_MAIN}t")))
 
     value_node = cell.find(f"{NS_MAIN}v")
     if value_node is None or value_node.text is None:

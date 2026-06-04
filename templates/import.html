@@ -1,20 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="section">
-  <h1>样例数据导入</h1>
-  <p class="muted">POC 支持导入现有 Excel 样例数据，覆盖 Patients、Visits、Labs、ModelOutputs。</p>
+  <h1>数据导入</h1>
+  <p class="muted">请选择按照导入模板填写的 .xlsx 文件。系统不会自动读取任何默认位置的数据。</p>
   <div class="panel">
-    <div class="kv">
-      <span>默认样例文件</span>
-      <strong>{{ default_sample_path }}</strong>
-    </div>
-    <div class="kv">
-      <span>文件状态</span>
-      <strong>{{ "已找到" if default_sample_exists else "未找到" }}</strong>
-    </div>
-    <form method="post" action="/import-demo">
-      <button class="primary" type="submit">导入桌面样例数据</button>
+    <form class="upload-form" method="post" action="/import-upload" enctype="multipart/form-data">
+      <label class="file-picker">
+        <span>选择 Excel 文件</span>
+        <input type="file" name="file" accept=".xlsx" required>
+      </label>
+      <button class="primary" type="submit">导入患者数据</button>
     </form>
+    <p class="hint">支持新模板：patients、smoking_history、comorbidities、symptom_scores、pulmonary_tests、lab_results、pathogen_results、ct_features、medications、exacerbations、followups。</p>
   </div>
 </section>
 {% endblock %}

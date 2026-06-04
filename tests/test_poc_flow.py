@@ -128,6 +128,11 @@ class PocFlowTest(unittest.TestCase):
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
 
+        import_page = client.get("/import")
+        self.assertEqual(import_page.status_code, 200)
+        self.assertNotIn("默认样例文件", import_page.text)
+        self.assertIn("type=\"file\"", import_page.text)
+
         self.assertEqual(client.get("/patients").status_code, 200)
         self.assertEqual(client.get("/patients/TEST-001").status_code, 200)
         self.assertEqual(client.get("/patients/TEST-001/timeline").status_code, 200)
@@ -140,6 +145,34 @@ class PocFlowTest(unittest.TestCase):
         report_response = client.post(f"/api/assessments/{assessment_id}/report")
         self.assertEqual(report_response.status_code, 200)
         self.assertIn("辅助评估报告草稿", report_response.json()["report_draft"])
+
+    def test_api_imports_new_template_xlsx_upload(self):
+        from copd_graph import web_app
+
+        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_40.xlsx"
+        self.assertTrue(sample_path.exists())
+
+        web_app.DEFAULT_DB_PATH = TEST_DB_PATH
+        client = TestClient(web_app.app)
+        with sample_path.open("rb") as file:
+            response = client.post(
+                "/api/import/patients",
+                files={
+                    "file": (
+                        "copd_patient_import_sample_40.xlsx",
+                        file,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["counts"]["patients"], 40)
+        self.assertGreater(response.json()["counts"]["visits"], 0)
+        self.assertEqual(response.json()["source"], "copd_patient_import_sample_40.xlsx")
+        patient_response = client.get("/api/patients?q=COPD-S001")
+        self.assertEqual(patient_response.status_code, 200)
+        self.assertEqual(patient_response.json()["count"], 1)
 
 
 if __name__ == "__main__":
