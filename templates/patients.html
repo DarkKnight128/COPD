@@ -8,9 +8,33 @@
     </div>
     <a class="button" href="/import">导入数据</a>
   </div>
-  <form class="search" method="get" action="/patients">
+  <form class="filter-bar" method="get" action="/patients">
     <input name="q" value="{{ q }}" placeholder="按患者 ID 检索">
-    <button type="submit">检索</button>
+    <select name="risk">
+      <option value="">全部风险</option>
+      {% for option in ["高", "中", "低", "未评估"] %}
+      <option value="{{ option }}" {% if risk == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <select name="assessment_status">
+      <option value="">全部评估状态</option>
+      {% for option in ["已评估", "未评估"] %}
+      <option value="{{ option }}" {% if assessment_status == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <select name="followup_status">
+      <option value="">全部随访状态</option>
+      {% for option in ["已随访", "未随访", "失访"] %}
+      <option value="{{ option }}" {% if followup_status == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <select name="import_batch_id">
+      <option value="">全部导入批次</option>
+      {% for batch in batches %}
+      <option value="{{ batch.batch_id }}" {% if import_batch_id|string == batch.batch_id|string %}selected{% endif %}>#{{ batch.batch_id }} {{ batch.file_name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">筛选</button>
   </form>
   <form method="post" action="/patients/delete" onsubmit="return confirm('确认删除选中的患者数据？该操作会同时删除关联时间轴、检验、模型输出和评估结果。');">
     <div class="table-actions">
@@ -27,6 +51,8 @@
           <th>mMRC</th>
           <th>风险等级</th>
           <th>评估状态</th>
+          <th>随访状态</th>
+          <th>导入批次</th>
           <th>操作</th>
         </tr>
       </thead>
@@ -41,6 +67,8 @@
           <td>{{ patient.mmrc_score }}</td>
           <td><span class="badge">{{ patient.risk_level }}</span></td>
           <td>{{ patient.assessment_status }}</td>
+          <td>{{ patient.followup_status }}</td>
+          <td>{% if patient.import_batch_id %}<a href="/imports/{{ patient.import_batch_id }}">#{{ patient.import_batch_id }}</a>{% else %}-{% endif %}</td>
           <td class="row-actions">
             <div class="action-links">
               <a href="/patients/{{ patient.patient_id }}">查看详情</a>
@@ -49,7 +77,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="9" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
+        <tr><td colspan="11" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
         {% endfor %}
       </tbody>
     </table>

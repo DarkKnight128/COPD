@@ -11,3 +11,6 @@ outputs/
 *.sqlite3
 *.sqlite-journal
 data/*.tmp
+~$*.xlsx
+data/~$*.xlsx
+plan

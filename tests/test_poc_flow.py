@@ -13,11 +13,14 @@ if str(SRC_DIR) not in sys.path:
 
 from copd_graph.graph import build_graph  # noqa: E402
 from copd_graph.poc_storage import (  # noqa: E402
+    ImportValidationError,
     build_patient_state_data,
     connect,
     delete_patients,
+    get_import_batch,
     get_latest_assessment,
     import_workbook,
+    list_import_batches,
     list_patients,
 )
 from copd_graph.xlsx_importer import WorkbookData  # noqa: E402
@@ -172,7 +175,7 @@ class PocFlowTest(unittest.TestCase):
     def test_web_delete_single_and_bulk_patients(self):
         from copd_graph import web_app
 
-        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_40.xlsx"
+        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_100.xlsx"
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
         with sample_path.open("rb") as file:
@@ -180,7 +183,7 @@ class PocFlowTest(unittest.TestCase):
                 "/api/import/patients",
                 files={
                     "file": (
-                        "copd_patient_import_sample_40.xlsx",
+                        "copd_patient_import_sample_100.xlsx",
                         file,
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
@@ -202,7 +205,7 @@ class PocFlowTest(unittest.TestCase):
     def test_api_imports_new_template_xlsx_upload(self):
         from copd_graph import web_app
 
-        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_40.xlsx"
+        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_100.xlsx"
         self.assertTrue(sample_path.exists())
 
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
@@ -212,7 +215,7 @@ class PocFlowTest(unittest.TestCase):
                 "/api/import/patients",
                 files={
                     "file": (
-                        "copd_patient_import_sample_40.xlsx",
+                        "copd_patient_import_sample_100.xlsx",
                         file,
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     )
@@ -220,12 +223,93 @@ class PocFlowTest(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["counts"]["patients"], 40)
+        self.assertEqual(response.json()["counts"]["patients"], 100)
         self.assertGreater(response.json()["counts"]["visits"], 0)
-        self.assertEqual(response.json()["source"], "copd_patient_import_sample_40.xlsx")
+        self.assertEqual(response.json()["source"], "copd_patient_import_sample_100.xlsx")
         patient_response = client.get("/api/patients?q=COPD-S001")
         self.assertEqual(patient_response.status_code, 200)
         self.assertEqual(patient_response.json()["count"], 1)
+
+    def test_import_logs_and_patient_filters(self):
+        from copd_graph import web_app
+
+        sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_100.xlsx"
+        web_app.DEFAULT_DB_PATH = TEST_DB_PATH
+        client = TestClient(web_app.app)
+        with sample_path.open("rb") as file:
+            response = client.post(
+                "/api/import/patients",
+                files={
+                    "file": (
+                        "copd_patient_import_sample_100.xlsx",
+                        file,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    )
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        batch_id = response.json()["batch_id"]
+        self.assertEqual(client.get("/api/imports").status_code, 200)
+        batch_response = client.get(f"/api/imports/{batch_id}")
+        self.assertEqual(batch_response.status_code, 200)
+        self.assertEqual(batch_response.json()["counts"]["patients"], 100)
+
+        filtered = client.get(f"/api/patients?followup_status=已随访&import_batch_id={batch_id}")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertGreater(filtered.json()["count"], 0)
+        self.assertEqual(client.get("/imports").status_code, 200)
+        self.assertEqual(client.get(f"/imports/{batch_id}").status_code, 200)
+
+    def test_template_import_validation_reports_errors(self):
+        workbook = WorkbookData(
+            sheets={
+                "patients": [
+                    {
+                        "patient_id": "",
+                        "gender": "男",
+                        "age": 66,
+                        "created_date": "2026-01-01",
+                    },
+                    {
+                        "patient_id": "BAD-001",
+                        "gender": "男",
+                        "age": 140,
+                        "created_date": "2026/01/02",
+                    },
+                    {
+                        "patient_id": "BAD-001",
+                        "gender": "男",
+                        "age": 66,
+                        "created_date": "2026-01-03",
+                    },
+                ],
+                "symptom_scores": [
+                    {
+                        "symptom_id": "S-BAD",
+                        "patient_id": "UNKNOWN",
+                        "assessment_date": "2026-01-02",
+                        "cat_score": 99,
+                    }
+                ],
+            }
+        )
+
+        with connect(TEST_DB_PATH) as connection:
+            with self.assertRaises(ImportValidationError) as context:
+                import_workbook(connection, workbook, "bad.xlsx")
+            result = context.exception.result
+            batch = get_import_batch(connection, result["batch_id"])
+            batches = list_import_batches(connection)
+
+        messages = " ".join(issue["message"] for issue in result["errors"])
+        self.assertIn("patient_id 为必填字段", messages)
+        self.assertIn("同一次导入内患者ID重复", messages)
+        self.assertIn("日期格式应为 YYYY-MM-DD", messages)
+        self.assertIn("数值超出合理范围", messages)
+        self.assertIn("不存在于 patients sheet", messages)
+        self.assertEqual(batch["status"], "failed")
+        self.assertTrue(any(item["batch_id"] == result["batch_id"] for item in batches))
 
 
 if __name__ == "__main__":

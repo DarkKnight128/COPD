@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>导入结果</h1>
+      <p class="muted">批次 #{{ result.batch_id }}，文件：{{ result.source }}</p>
+    </div>
+    <div class="actions">
+      <a class="button" href="/import">继续导入</a>
+      <a class="button" href="/patients">患者列表</a>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>导入状态</h2>
+    <table class="info-table">
+      <tbody>
+        <tr>
+          <th>状态</th>
+          <td><span class="badge status-{{ result.status }}">{{ "成功" if result.status == "success" else "失败" }}</span></td>
+        </tr>
+        <tr>
+          <th>患者数</th>
+          <td>{{ result.counts.patients or 0 }}</td>
+        </tr>
+        <tr>
+          <th>时间轴事件</th>
+          <td>{{ result.counts.visits or 0 }}</td>
+        </tr>
+        <tr>
+          <th>检验记录</th>
+          <td>{{ result.counts.labs or 0 }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if result.errors %}
+  <div class="panel">
+    <h2>错误明细</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Sheet</th>
+          <th>行号</th>
+          <th>字段</th>
+          <th>错误原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in result.errors %}
+        <tr>
+          <td>{{ issue.sheet_name }}</td>
+          <td>{{ issue.row_number or "-" }}</td>
+          <td>{{ issue.field_name or "-" }}</td>
+          <td>{{ issue.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if result.warnings %}
+  <div class="panel">
+    <h2>提示信息</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Sheet</th>
+          <th>字段</th>
+          <th>提示</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in result.warnings %}
+        <tr>
+          <td>{{ issue.sheet_name }}</td>
+          <td>{{ issue.field_name or "-" }}</td>
+          <td>{{ issue.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

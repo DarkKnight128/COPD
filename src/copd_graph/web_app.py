@@ -12,14 +12,17 @@ from fastapi.templating import Jinja2Templates
 from copd_graph.graph import build_graph
 from copd_graph.poc_storage import (
     DEFAULT_DB_PATH,
+    ImportValidationError,
     build_patient_state_data,
     connect,
     delete_patients,
     get_assessment,
+    get_import_batch,
     get_latest_assessment,
     get_patient_bundle,
     import_workbook,
     init_database,
+    list_import_batches,
     list_patients,
     save_assessment,
 )
@@ -49,24 +52,72 @@ def root() -> RedirectResponse:
 
 @app.get("/import", response_class=HTMLResponse)
 def import_page(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(request, "import.html", {})
+    with connect(DEFAULT_DB_PATH) as connection:
+        batches = list_import_batches(connection)
+    return templates.TemplateResponse(request, "import.html", {"batches": batches})
 
 
 @app.post("/import-upload")
-async def import_upload(file: UploadFile = File(...)) -> RedirectResponse:
+async def import_upload(request: Request, file: UploadFile = File(...)) -> HTMLResponse:
     if not file.filename.lower().endswith(".xlsx"):
         raise HTTPException(status_code=400, detail="Please upload an .xlsx file")
     content = await file.read()
     with connect(DEFAULT_DB_PATH) as connection:
-        import_workbook(connection, parse_xlsx_bytes(content))
-    return RedirectResponse(url="/patients", status_code=303)
+        try:
+            result = import_workbook(connection, parse_xlsx_bytes(content), file.filename)
+        except ImportValidationError as error:
+            result = error.result
+    return templates.TemplateResponse(request, "import_result.html", {"result": result})
+
+
+@app.get("/imports", response_class=HTMLResponse)
+def imports_page(request: Request) -> HTMLResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        batches = list_import_batches(connection)
+    return templates.TemplateResponse(request, "imports.html", {"batches": batches})
+
+
+@app.get("/imports/{batch_id}", response_class=HTMLResponse)
+def import_detail_page(request: Request, batch_id: int) -> HTMLResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        batch = get_import_batch(connection, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    return templates.TemplateResponse(request, "import_detail.html", {"batch": batch})
 
 
 @app.get("/patients", response_class=HTMLResponse)
-def patients_page(request: Request, q: str = "") -> HTMLResponse:
+def patients_page(
+    request: Request,
+    q: str = "",
+    risk: str = "",
+    assessment_status: str = "",
+    followup_status: str = "",
+    import_batch_id: str = "",
+) -> HTMLResponse:
     with connect(DEFAULT_DB_PATH) as connection:
-        patients = list_patients(connection, q)
-    return templates.TemplateResponse(request, "patients.html", {"patients": patients, "q": q})
+        patients = list_patients(
+            connection,
+            q,
+            risk=risk,
+            assessment_status=assessment_status,
+            followup_status=followup_status,
+            import_batch_id=import_batch_id,
+        )
+        batches = list_import_batches(connection)
+    return templates.TemplateResponse(
+        request,
+        "patients.html",
+        {
+            "patients": patients,
+            "q": q,
+            "risk": risk,
+            "assessment_status": assessment_status,
+            "followup_status": followup_status,
+            "import_batch_id": import_batch_id,
+            "batches": batches,
+        },
+    )
 
 
 @app.post("/patients/delete")
@@ -170,14 +221,45 @@ async def api_import_patients(file: UploadFile = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail="Please upload an .xlsx file")
     workbook = parse_xlsx_bytes(await file.read())
     with connect(DEFAULT_DB_PATH) as connection:
-        counts = import_workbook(connection, workbook)
-    return {"source": file.filename, "counts": counts}
+        try:
+            return import_workbook(connection, workbook, file.filename)
+        except ImportValidationError as error:
+            raise HTTPException(status_code=400, detail=error.result) from error
+
+
+@app.get("/api/imports")
+def api_imports() -> Dict[str, Any]:
+    with connect(DEFAULT_DB_PATH) as connection:
+        batches = list_import_batches(connection)
+    return {"imports": batches, "count": len(batches)}
+
+
+@app.get("/api/imports/{batch_id}")
+def api_import(batch_id: int) -> Dict[str, Any]:
+    with connect(DEFAULT_DB_PATH) as connection:
+        batch = get_import_batch(connection, batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    return batch
 
 
 @app.get("/api/patients")
-def api_patients(q: str = "") -> Dict[str, Any]:
+def api_patients(
+    q: str = "",
+    risk: str = "",
+    assessment_status: str = "",
+    followup_status: str = "",
+    import_batch_id: str = "",
+) -> Dict[str, Any]:
     with connect(DEFAULT_DB_PATH) as connection:
-        patients = list_patients(connection, q)
+        patients = list_patients(
+            connection,
+            q,
+            risk=risk,
+            assessment_status=assessment_status,
+            followup_status=followup_status,
+            import_batch_id=import_batch_id,
+        )
     return {"patients": patients, "count": len(patients)}
 
 

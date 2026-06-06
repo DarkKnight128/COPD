@@ -94,9 +94,28 @@ h2 {
   margin-bottom: 16px;
 }
 
-.search {
+.search,
+.filter-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
+}
+
+.filter-bar input {
+  min-width: 190px;
+}
+
+select {
+  background: #ffffff;
+  border: 1px solid #c8d2d7;
+  border-radius: 6px;
+  font-size: 14px;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.compact-head {
+  margin-bottom: 12px;
 }
 
 .table-actions {
@@ -286,6 +305,29 @@ th {
   display: inline-flex;
   font-size: 13px;
   padding: 4px 9px;
+}
+
+.status-success,
+.issue-warning {
+  background: #e9f6ed;
+  color: #1f6b3a;
+}
+
+.status-failed,
+.issue-error {
+  background: #fdebea;
+  color: #a12d25;
+}
+
+.record-sections {
+  display: grid;
+  gap: 18px;
+}
+
+.record-sections h3 {
+  color: #34494f;
+  font-size: 15px;
+  margin: 0 0 8px;
 }
 
 .status-pill {

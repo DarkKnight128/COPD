@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>导入批次 #{{ batch.batch_id }}</h1>
+      <p class="muted">{{ batch.file_name }}，{{ batch.imported_at }}</p>
+    </div>
+    <a class="button" href="/imports">返回导入日志</a>
+  </div>
+
+  <div class="panel">
+    <h2>批次摘要</h2>
+    <table class="info-table">
+      <tbody>
+        <tr>
+          <th>状态</th>
+          <td><span class="badge status-{{ batch.status }}">{{ "成功" if batch.status == "success" else ("失败" if batch.status == "failed" else "处理中") }}</span></td>
+        </tr>
+        <tr>
+          <th>患者数</th>
+          <td>{{ batch.counts.patients or 0 }}</td>
+        </tr>
+        <tr>
+          <th>时间轴事件</th>
+          <td>{{ batch.counts.visits or 0 }}</td>
+        </tr>
+        <tr>
+          <th>检验记录</th>
+          <td>{{ batch.counts.labs or 0 }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>问题明细</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>级别</th>
+          <th>Sheet</th>
+          <th>行号</th>
+          <th>字段</th>
+          <th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for issue in batch.issues %}
+        <tr>
+          <td><span class="badge issue-{{ issue.severity }}">{{ "错误" if issue.severity == "error" else "提示" }}</span></td>
+          <td>{{ issue.sheet_name }}</td>
+          <td>{{ issue.row_number or "-" }}</td>
+          <td>{{ issue.field_name or "-" }}</td>
+          <td>{{ issue.message }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">本次导入未记录错误或提示。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

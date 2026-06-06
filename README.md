@@ -1,10 +1,11 @@
 # COPD LangGraph 智能辅助评估 POC
 
-这是一个慢阻肺病智能诊疗决策支持系统的第 3-4 周 POC Demo。当前目标是跑通内部演示主流程：
+这是一个慢阻肺病智能诊疗决策支持系统的 POC/MVP Demo。当前已经从第 3-4 周 POC 主流程，推进到第 5-6 周 MVP 数据层增强：
 
 ```text
-导入 20-50 例样例数据
+导入固定模板样例数据
 -> 患者列表与检索
+-> 风险/评估/随访/导入批次筛选
 -> 患者总览
 -> 病程时间轴
 -> 触发 LangGraph 智能评估
@@ -17,11 +18,20 @@
 ## 当前能力
 
 - 本地 FastAPI + SQLite + Jinja 页面 Demo。
-- 支持导入现有 Excel 样例数据：
-  - `Patients`
-  - `Visits`
-  - `Labs`
-  - `ModelOutputs`
+- 支持固定 Excel 模板导入：
+  - `data/copd_patient_import_template.xlsx`
+  - `data/copd_patient_import_sample_100.xlsx`
+- 支持导入前校验：
+  - 必填字段
+  - 日期格式
+  - 数值范围
+  - 重复患者
+  - 跨 sheet 患者 ID 关联
+- 支持导入日志：
+  - 导入批次
+  - 成功/失败状态
+  - 导入统计
+  - 错误和提示明细
 - 提供 5 个核心页面：
   - 患者列表页
   - 患者总览页
@@ -64,16 +74,26 @@ python scripts\run_poc_server.py
 http://127.0.0.1:8000
 ```
 
-默认导入按钮会读取：
+系统不会自动读取任何默认位置的数据。启动后进入“导入”页面，手动上传固定模板 Excel。
+
+推荐演示数据：
 
 ```text
-C:\Users\Owner\Desktop\plan\copd_mock_data_v1(1).xlsx
+data\copd_patient_import_sample_100.xlsx
+```
+
+官方空模板：
+
+```text
+data\copd_patient_import_template.xlsx
 ```
 
 ## API
 
 - `POST /api/import/patients`
-- `GET /api/patients?q=`
+- `GET /api/imports`
+- `GET /api/imports/{batch_id}`
+- `GET /api/patients?q=&risk=&assessment_status=&followup_status=&import_batch_id=`
 - `GET /api/patients/{patient_id}`
 - `GET /api/patients/{patient_id}/timeline`
 - `POST /api/patients/{patient_id}/assessment`
@@ -99,4 +119,4 @@ python -m pytest -q
 - CT 只使用报告文本或已提取影像特征。
 - mNGS/病原学结果只作为感染相关线索。
 - 报告仅为辅助评估草稿，不能替代医生临床判断。
-- 当前不做医生复核、报告编辑导出、权限、日志和版本管理；这些留到 MVP 增量阶段。
+- 当前已实现导入日志；医生复核、报告编辑确认、权限和版本管理仍留到后续 MVP 临床流程阶段。

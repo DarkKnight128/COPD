@@ -45,5 +45,89 @@
     <a class="button" href="/patients/{{ patient.patient_id }}/timeline">查看病程时间轴</a>
     <a class="button" href="/patients/{{ patient.patient_id }}/assessment">查看评估结果</a>
   </div>
+
+  <div class="panel">
+    <h2>纵向病程档案</h2>
+    <div class="record-sections">
+      <section>
+        <h3>症状评分</h3>
+        <table class="data-table">
+          <thead><tr><th>日期</th><th>摘要</th><th>程度</th></tr></thead>
+          <tbody>
+            {% for item in longitudinal_records.symptoms %}
+            <tr><td>{{ item.event_date }}</td><td>{{ item.event_detail }}</td><td>{{ item.severity or "-" }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">暂无记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h3>肺功能检查</h3>
+        <table class="data-table">
+          <thead><tr><th>日期</th><th>摘要</th><th>程度</th></tr></thead>
+          <tbody>
+            {% for item in longitudinal_records.pulmonary_tests %}
+            <tr><td>{{ item.event_date }}</td><td>{{ item.event_detail }}</td><td>{{ item.severity or "-" }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">暂无记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h3>用药记录</h3>
+        <table class="data-table">
+          <thead><tr><th>日期</th><th>摘要</th><th>程度</th></tr></thead>
+          <tbody>
+            {% for item in longitudinal_records.medications %}
+            <tr><td>{{ item.event_date }}</td><td>{{ item.event_detail }}</td><td>{{ item.severity or "-" }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">暂无记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h3>急性加重</h3>
+        <table class="data-table">
+          <thead><tr><th>日期</th><th>摘要</th><th>程度</th></tr></thead>
+          <tbody>
+            {% for item in longitudinal_records.exacerbations %}
+            <tr><td>{{ item.event_date }}</td><td>{{ item.event_detail }}</td><td>{{ item.severity or "-" }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">暂无记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h3>随访记录</h3>
+        <table class="data-table">
+          <thead><tr><th>日期</th><th>摘要</th><th>程度</th></tr></thead>
+          <tbody>
+            {% for item in longitudinal_records.followups %}
+            <tr><td>{{ item.event_date }}</td><td>{{ item.event_detail }}</td><td>{{ item.severity or "-" }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">暂无记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section>
+        <h3>检验与病原学</h3>
+        <table class="data-table">
+          <thead><tr><th>日期</th><th>类型</th><th>摘要</th></tr></thead>
+          <tbody>
+            {% for item in longitudinal_records.lab_events + longitudinal_records.pathogen_tests %}
+            <tr><td>{{ item.event_date }}</td><td>{{ item.event_type }}</td><td>{{ item.event_detail }}</td></tr>
+            {% else %}
+            <tr><td colspan="3" class="empty">暂无记录</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    </div>
+  </div>
 </section>
 {% endblock %}

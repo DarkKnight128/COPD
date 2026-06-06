@@ -6,7 +6,7 @@ from generate_import_template import README_ROWS, SHEETS, write_xlsx
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_PATH = PROJECT_ROOT / "data" / "copd_patient_import_sample_40.xlsx"
+OUTPUT_PATH = PROJECT_ROOT / "data" / "copd_patient_import_sample_100.xlsx"
 
 
 def main() -> None:
@@ -14,12 +14,12 @@ def main() -> None:
     worksheets = {
         "README": README_ROWS
         + [
-            ["样例数据说明", "本文件包含40例模拟患者数据，仅用于POC/MVP导入和页面演示。"],
+            ["样例数据说明", "本文件包含100例模拟患者数据，仅用于POC/MVP导入和页面演示。"],
             ["数据边界", "样例不包含真实患者隐私数据，不包含原始CT、DICOM、PACS数据。"],
         ],
         "field_dictionary": field_dictionary_rows(),
     }
-    samples = build_samples()
+    samples = build_samples(100)
     for sheet_name, fields in SHEETS.items():
         headers = [field[0] for field in fields]
         rows = [headers]
@@ -39,7 +39,7 @@ def field_dictionary_rows():
     return rows
 
 
-def build_samples():
+def build_samples(count: int = 100):
     data = {sheet_name: [] for sheet_name in SHEETS}
     medications = [
         ("噻托溴铵", "LAMA"),
@@ -55,7 +55,7 @@ def build_samples():
         {"hypertension": "是", "diabetes": "否", "coronary_disease": "是", "other_comorbidities": ""},
     ]
 
-    for index in range(1, 41):
+    for index in range(1, count + 1):
         patient_id = f"COPD-S{index:03d}"
         age = 50 + (index * 3 % 34)
         gender = "男" if index % 3 else "女"

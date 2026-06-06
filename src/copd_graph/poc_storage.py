@@ -13,6 +13,82 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "poc_demo_v2.sqlite"
 
 
+TEMPLATE_REQUIRED_FIELDS = {
+    "patients": ["patient_id", "gender", "age", "created_date"],
+    "smoking_history": ["patient_id", "smoking_status"],
+    "comorbidities": ["patient_id"],
+    "symptom_scores": ["symptom_id", "patient_id", "assessment_date"],
+    "pulmonary_tests": ["pulmonary_test_id", "patient_id", "test_date"],
+    "lab_results": ["lab_id", "patient_id", "lab_date"],
+    "pathogen_results": ["pathogen_id", "patient_id", "pathogen_test_date"],
+    "ct_features": ["ct_id", "patient_id", "ct_date"],
+    "medications": ["medication_id", "patient_id", "start_date", "medication_name"],
+    "exacerbations": ["exacerbation_id", "patient_id", "exacerbation_date"],
+    "followups": ["followup_id", "patient_id", "followup_date"],
+}
+
+TEMPLATE_DATE_FIELDS = {
+    "patients": ["birth_date", "created_date"],
+    "comorbidities": ["copd_diagnosis_date"],
+    "symptom_scores": ["assessment_date"],
+    "pulmonary_tests": ["test_date"],
+    "lab_results": ["lab_date"],
+    "pathogen_results": ["pathogen_test_date"],
+    "ct_features": ["ct_date"],
+    "medications": ["start_date", "end_date"],
+    "exacerbations": ["exacerbation_date"],
+    "followups": ["followup_date"],
+}
+
+TEMPLATE_NUMERIC_RANGES = {
+    "patients": {
+        "age": (0, 120),
+        "height_cm": (80, 230),
+        "weight_kg": (20, 220),
+        "bmi": (10, 60),
+    },
+    "smoking_history": {
+        "cigarettes_per_day": (0, 120),
+        "smoking_years": (0, 90),
+        "pack_years": (0, 200),
+        "quit_years": (0, 90),
+    },
+    "symptom_scores": {
+        "cat_score": (0, 40),
+        "mmrc_score": (0, 4),
+    },
+    "pulmonary_tests": {
+        "fev1_l": (0.2, 8),
+        "fvc_l": (0.3, 8),
+        "fev1_fvc_ratio": (0.1, 1.2),
+        "fev1_percent_predicted": (10, 150),
+        "fvc_percent_predicted": (10, 150),
+        "feno": (0, 300),
+    },
+    "lab_results": {
+        "wbc": (0, 100),
+        "neutrophil_percent": (0, 100),
+        "eosinophil_count": (0, 10),
+        "crp": (0, 300),
+        "pct": (0, 100),
+        "spo2": (50, 100),
+        "pao2": (20, 200),
+        "paco2": (10, 120),
+    },
+    "ct_features": {
+        "emphysema_percent": (0, 100),
+        "airway_wall_thickness": (0, 10),
+        "lung_volume_index": (0, 20),
+    },
+}
+
+
+class ImportValidationError(ValueError):
+    def __init__(self, result: Dict[str, Any]):
+        super().__init__("Excel导入校验失败")
+        self.result = result
+
+
 def connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -26,6 +102,24 @@ def connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
 def init_database(connection: sqlite3.Connection) -> None:
     connection.executescript(
         """
+        CREATE TABLE IF NOT EXISTS import_batches (
+            batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT NOT NULL,
+            imported_at TEXT NOT NULL,
+            status TEXT NOT NULL,
+            counts_json TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS import_issues (
+            issue_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id INTEGER NOT NULL,
+            sheet_name TEXT NOT NULL,
+            row_number INTEGER,
+            field_name TEXT,
+            severity TEXT NOT NULL,
+            message TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS patients (
             patient_id TEXT PRIMARY KEY,
             data_json TEXT NOT NULL,
@@ -61,32 +155,85 @@ def init_database(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    _ensure_column(connection, "patients", "import_batch_id", "INTEGER")
+    _ensure_column(connection, "visits", "import_batch_id", "INTEGER")
+    _ensure_column(connection, "labs", "import_batch_id", "INTEGER")
+    _ensure_column(connection, "model_outputs", "import_batch_id", "INTEGER")
     connection.commit()
 
 
-def import_workbook(connection: sqlite3.Connection, workbook: WorkbookData) -> Dict[str, int]:
+def import_workbook(
+    connection: sqlite3.Connection, workbook: WorkbookData, source_filename: str = "uploaded.xlsx"
+) -> Dict[str, Any]:
     init_database(connection)
     now = datetime.utcnow().isoformat(timespec="seconds")
+    batch_id = _create_import_batch(connection, source_filename, now)
+    validation = validate_workbook(connection, workbook)
+    _save_import_issues(connection, batch_id, validation["issues"])
+    if validation["errors"]:
+        result = {
+            "batch_id": batch_id,
+            "source": source_filename,
+            "status": "failed",
+            "counts": {},
+            "errors": validation["errors"],
+            "warnings": validation["warnings"],
+        }
+        _update_import_batch(connection, batch_id, "failed", result["counts"])
+        connection.commit()
+        raise ImportValidationError(result)
+
     if _sheet(workbook, "patients"):
-        return _import_template_workbook(connection, workbook, now)
+        counts = _import_template_workbook(connection, workbook, now, batch_id)
+    else:
+        counts = _import_legacy_workbook(connection, workbook, now, batch_id)
+
+    result = {
+        "batch_id": batch_id,
+        "source": source_filename,
+        "status": "success",
+        "counts": counts,
+        "errors": [],
+        "warnings": validation["warnings"],
+    }
+    _update_import_batch(connection, batch_id, "success", counts)
+    connection.commit()
+    return result
+
+
+def validate_workbook(connection: sqlite3.Connection, workbook: WorkbookData) -> Dict[str, Any]:
+    if _sheet(workbook, "patients"):
+        issues = _validate_template_workbook(connection, workbook)
+    else:
+        issues = _validate_legacy_workbook(workbook)
+    errors = [issue for issue in issues if issue["severity"] == "error"]
+    warnings = [issue for issue in issues if issue["severity"] == "warning"]
+    return {"issues": issues, "errors": errors, "warnings": warnings}
+
+
+def _import_legacy_workbook(
+    connection: sqlite3.Connection,
+    workbook: WorkbookData,
+    imported_at: str,
+    batch_id: int,
+) -> Dict[str, int]:
 
     patients = _sheet(workbook, "Patients")
     visits = _sheet(workbook, "Visits")
     labs = _sheet(workbook, "Labs")
     model_outputs = _sheet(workbook, "ModelOutputs")
 
-    _validate_required_patients(patients)
-
     for row in patients:
         connection.execute(
             """
-            INSERT INTO patients(patient_id, data_json, imported_at)
-            VALUES (?, ?, ?)
+            INSERT INTO patients(patient_id, data_json, imported_at, import_batch_id)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(patient_id) DO UPDATE SET
                 data_json = excluded.data_json,
-                imported_at = excluded.imported_at
+                imported_at = excluded.imported_at,
+                import_batch_id = excluded.import_batch_id
             """,
-            (str(row["patient_id"]), json.dumps(row, ensure_ascii=False), now),
+            (str(row["patient_id"]), json.dumps(row, ensure_ascii=False), imported_at, batch_id),
         )
 
     for row in visits:
@@ -95,18 +242,20 @@ def import_workbook(connection: sqlite3.Connection, workbook: WorkbookData) -> D
         event_id = str(row.get("event_id") or f"{row.get('patient_id')}-{row.get('event_date')}")
         connection.execute(
             """
-            INSERT INTO visits(event_id, patient_id, event_date, data_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO visits(event_id, patient_id, event_date, data_json, import_batch_id)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 patient_id = excluded.patient_id,
                 event_date = excluded.event_date,
-                data_json = excluded.data_json
+                data_json = excluded.data_json,
+                import_batch_id = excluded.import_batch_id
             """,
             (
                 event_id,
                 str(row["patient_id"]),
                 _as_text(row.get("event_date")),
                 json.dumps(row, ensure_ascii=False),
+                batch_id,
             ),
         )
 
@@ -116,18 +265,20 @@ def import_workbook(connection: sqlite3.Connection, workbook: WorkbookData) -> D
         lab_id = str(row.get("lab_id") or f"{row.get('patient_id')}-{row.get('sample_date')}")
         connection.execute(
             """
-            INSERT INTO labs(lab_id, patient_id, sample_date, data_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO labs(lab_id, patient_id, sample_date, data_json, import_batch_id)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(lab_id) DO UPDATE SET
                 patient_id = excluded.patient_id,
                 sample_date = excluded.sample_date,
-                data_json = excluded.data_json
+                data_json = excluded.data_json,
+                import_batch_id = excluded.import_batch_id
             """,
             (
                 lab_id,
                 str(row["patient_id"]),
                 _as_text(row.get("sample_date")),
                 json.dumps(row, ensure_ascii=False),
+                batch_id,
             ),
         )
 
@@ -137,22 +288,23 @@ def import_workbook(connection: sqlite3.Connection, workbook: WorkbookData) -> D
         assessment_id = str(row.get("assessment_id") or f"mock-{row.get('patient_id')}")
         connection.execute(
             """
-            INSERT INTO model_outputs(assessment_id, patient_id, assessment_date, data_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO model_outputs(assessment_id, patient_id, assessment_date, data_json, import_batch_id)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(assessment_id) DO UPDATE SET
                 patient_id = excluded.patient_id,
                 assessment_date = excluded.assessment_date,
-                data_json = excluded.data_json
+                data_json = excluded.data_json,
+                import_batch_id = excluded.import_batch_id
             """,
             (
                 assessment_id,
                 str(row["patient_id"]),
                 _as_text(row.get("assessment_date")),
                 json.dumps(row, ensure_ascii=False),
+                batch_id,
             ),
         )
 
-    connection.commit()
     return {
         "patients": len(patients),
         "visits": len(visits),
@@ -161,9 +313,18 @@ def import_workbook(connection: sqlite3.Connection, workbook: WorkbookData) -> D
     }
 
 
-def list_patients(connection: sqlite3.Connection, query: str = "") -> List[Dict[str, Any]]:
+def list_patients(
+    connection: sqlite3.Connection,
+    query: str = "",
+    risk: str = "",
+    assessment_status: str = "",
+    followup_status: str = "",
+    import_batch_id: str | int = "",
+) -> List[Dict[str, Any]]:
     init_database(connection)
-    rows = connection.execute("SELECT patient_id, data_json FROM patients ORDER BY patient_id").fetchall()
+    rows = connection.execute(
+        "SELECT patient_id, data_json, import_batch_id FROM patients ORDER BY patient_id"
+    ).fetchall()
     patients = []
     for row in rows:
         patient = json.loads(row["data_json"])
@@ -172,6 +333,17 @@ def list_patients(connection: sqlite3.Connection, query: str = "") -> List[Dict[
             continue
         model_output = get_latest_model_output(connection, patient_id)
         latest_assessment = get_latest_assessment(connection, patient_id)
+        risk_level = (model_output or {}).get("exacerbation_risk_level", "未评估")
+        current_assessment_status = "已评估" if latest_assessment else "未评估"
+        current_followup_status = _followup_status(patient)
+        if risk and risk_level != risk:
+            continue
+        if assessment_status and current_assessment_status != assessment_status:
+            continue
+        if followup_status and current_followup_status != followup_status:
+            continue
+        if import_batch_id and str(row["import_batch_id"] or "") != str(import_batch_id):
+            continue
         patients.append(
             {
                 "patient_id": patient_id,
@@ -179,8 +351,10 @@ def list_patients(connection: sqlite3.Connection, query: str = "") -> List[Dict[
                 "age": patient.get("age", ""),
                 "cat_score": patient.get("CAT_score", patient.get("cat_score", "")),
                 "mmrc_score": patient.get("mMRC_score", patient.get("mmrc_score", "")),
-                "risk_level": (model_output or {}).get("exacerbation_risk_level", "未评估"),
-                "assessment_status": "已评估" if latest_assessment else "未评估",
+                "risk_level": risk_level,
+                "assessment_status": current_assessment_status,
+                "followup_status": current_followup_status,
+                "import_batch_id": row["import_batch_id"],
                 "latest_assessment_id": (latest_assessment or {}).get("assessment_id"),
             }
         )
@@ -226,6 +400,7 @@ def get_patient_bundle(connection: sqlite3.Connection, patient_id: str) -> Dict[
         "labs": _load_many(connection, "labs", patient_id, "sample_date"),
         "model_output": get_latest_model_output(connection, patient_id),
         "latest_assessment": get_latest_assessment(connection, patient_id),
+        "longitudinal_records": _longitudinal_records(connection, patient_id),
     }
 
 
@@ -372,6 +547,46 @@ def get_latest_model_output(connection: sqlite3.Connection, patient_id: str) -> 
     return json.loads(row["data_json"])
 
 
+def list_import_batches(connection: sqlite3.Connection) -> List[Dict[str, Any]]:
+    init_database(connection)
+    rows = connection.execute(
+        """
+        SELECT batch_id, file_name, imported_at, status, counts_json
+        FROM import_batches
+        ORDER BY batch_id DESC
+        """
+    ).fetchall()
+    return [_import_batch_from_row(row, include_issues=False) for row in rows]
+
+
+def get_import_batch(connection: sqlite3.Connection, batch_id: int) -> Dict[str, Any] | None:
+    init_database(connection)
+    row = connection.execute(
+        """
+        SELECT batch_id, file_name, imported_at, status, counts_json
+        FROM import_batches
+        WHERE batch_id = ?
+        """,
+        (batch_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    batch = _import_batch_from_row(row, include_issues=False)
+    issue_rows = connection.execute(
+        """
+        SELECT sheet_name, row_number, field_name, severity, message
+        FROM import_issues
+        WHERE batch_id = ?
+        ORDER BY issue_id
+        """,
+        (batch_id,),
+    ).fetchall()
+    batch["issues"] = [dict(issue) for issue in issue_rows]
+    batch["errors"] = [issue for issue in batch["issues"] if issue["severity"] == "error"]
+    batch["warnings"] = [issue for issue in batch["issues"] if issue["severity"] == "warning"]
+    return batch
+
+
 def _load_many(
     connection: sqlite3.Connection, table_name: str, patient_id: str, order_field: str
 ) -> List[Dict[str, Any]]:
@@ -386,8 +601,232 @@ def _sheet(workbook: WorkbookData, name: str) -> List[Dict[str, Any]]:
     return workbook.sheets.get(name) or workbook.sheets.get(name.lower()) or []
 
 
+def _ensure_column(
+    connection: sqlite3.Connection, table_name: str, column_name: str, column_type: str
+) -> None:
+    existing = {
+        row["name"]
+        for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    }
+    if column_name not in existing:
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
+def _create_import_batch(connection: sqlite3.Connection, file_name: str, imported_at: str) -> int:
+    cursor = connection.execute(
+        """
+        INSERT INTO import_batches(file_name, imported_at, status, counts_json)
+        VALUES (?, ?, ?, ?)
+        """,
+        (file_name or "uploaded.xlsx", imported_at, "running", "{}"),
+    )
+    return int(cursor.lastrowid)
+
+
+def _update_import_batch(
+    connection: sqlite3.Connection, batch_id: int, status: str, counts: Dict[str, Any]
+) -> None:
+    connection.execute(
+        """
+        UPDATE import_batches
+        SET status = ?, counts_json = ?
+        WHERE batch_id = ?
+        """,
+        (status, json.dumps(counts, ensure_ascii=False), batch_id),
+    )
+
+
+def _save_import_issues(
+    connection: sqlite3.Connection, batch_id: int, issues: List[Dict[str, Any]]
+) -> None:
+    for issue in issues:
+        connection.execute(
+            """
+            INSERT INTO import_issues(batch_id, sheet_name, row_number, field_name, severity, message)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                batch_id,
+                issue.get("sheet_name", ""),
+                issue.get("row_number"),
+                issue.get("field_name", ""),
+                issue.get("severity", "warning"),
+                issue.get("message", ""),
+            ),
+        )
+
+
+def _import_batch_from_row(row: sqlite3.Row, include_issues: bool = False) -> Dict[str, Any]:
+    batch = {
+        "batch_id": row["batch_id"],
+        "file_name": row["file_name"],
+        "imported_at": row["imported_at"],
+        "status": row["status"],
+        "counts": json.loads(row["counts_json"] or "{}"),
+    }
+    if include_issues:
+        batch["issues"] = []
+    return batch
+
+
+def _validate_template_workbook(
+    connection: sqlite3.Connection, workbook: WorkbookData
+) -> List[Dict[str, Any]]:
+    issues: List[Dict[str, Any]] = []
+    patients = _sheet(workbook, "patients")
+    patient_ids = [str(row.get("patient_id", "")).strip() for row in patients]
+    valid_patient_ids = {patient_id for patient_id in patient_ids if patient_id}
+
+    if not patients:
+        issues.append(_issue("patients", None, "patient_id", "error", "patients sheet 不能为空"))
+
+    seen: set[str] = set()
+    for row_number, patient_id in enumerate(patient_ids, start=2):
+        if not patient_id:
+            continue
+        if patient_id in seen:
+            issues.append(
+                _issue("patients", row_number, "patient_id", "error", f"同一次导入内患者ID重复：{patient_id}")
+            )
+        seen.add(patient_id)
+
+    existing = _existing_patient_ids(connection, valid_patient_ids)
+    for patient_id in sorted(existing):
+        issues.append(
+            _issue("patients", None, "patient_id", "warning", f"患者 {patient_id} 已存在，本次导入将覆盖/更新该患者数据")
+        )
+
+    for sheet_name, required_fields in TEMPLATE_REQUIRED_FIELDS.items():
+        rows = _sheet(workbook, sheet_name)
+        for row_number, row in enumerate(rows, start=2):
+            for field_name in required_fields:
+                if _blank(row.get(field_name)):
+                    issues.append(
+                        _issue(sheet_name, row_number, field_name, "error", f"{field_name} 为必填字段")
+                    )
+            if sheet_name != "patients":
+                patient_id = str(row.get("patient_id", "")).strip()
+                if patient_id and patient_id not in valid_patient_ids:
+                    issues.append(
+                        _issue(sheet_name, row_number, "patient_id", "error", f"患者ID {patient_id} 不存在于 patients sheet")
+                    )
+
+    for sheet_name, fields in TEMPLATE_DATE_FIELDS.items():
+        for row_number, row in enumerate(_sheet(workbook, sheet_name), start=2):
+            for field_name in fields:
+                value = row.get(field_name)
+                if not _blank(value) and not _valid_date(value):
+                    issues.append(
+                        _issue(sheet_name, row_number, field_name, "error", f"{field_name} 日期格式应为 YYYY-MM-DD")
+                    )
+
+    for sheet_name, fields in TEMPLATE_NUMERIC_RANGES.items():
+        for row_number, row in enumerate(_sheet(workbook, sheet_name), start=2):
+            for field_name, limits in fields.items():
+                value = row.get(field_name)
+                if _blank(value):
+                    continue
+                number = _number(value)
+                if number is None:
+                    issues.append(
+                        _issue(sheet_name, row_number, field_name, "error", f"{field_name} 应为数值")
+                    )
+                    continue
+                lower, upper = limits
+                if number < lower or number > upper:
+                    issues.append(
+                        _issue(sheet_name, row_number, field_name, "error", f"{field_name} 数值超出合理范围 {lower}-{upper}")
+                    )
+
+    return issues
+
+
+def _validate_legacy_workbook(workbook: WorkbookData) -> List[Dict[str, Any]]:
+    issues = [
+        _issue("Workbook", None, "", "warning", "当前导入的是旧 mock 表格格式，仅作为兼容输入；正式演示请使用固定模板")
+    ]
+    patients = _sheet(workbook, "Patients")
+    if not patients:
+        issues.append(_issue("Patients", None, "patient_id", "error", "Patients sheet 不能为空"))
+    patient_ids = set()
+    for row_number, row in enumerate(patients, start=2):
+        patient_id = str(row.get("patient_id", "")).strip()
+        if not patient_id:
+            issues.append(_issue("Patients", row_number, "patient_id", "error", "patient_id 为必填字段"))
+            continue
+        if patient_id in patient_ids:
+            issues.append(_issue("Patients", row_number, "patient_id", "error", f"同一次导入内患者ID重复：{patient_id}"))
+        patient_ids.add(patient_id)
+
+    legacy_dates = {
+        "Visits": "event_date",
+        "Labs": "sample_date",
+        "ModelOutputs": "assessment_date",
+    }
+    for sheet_name, date_field in legacy_dates.items():
+        for row_number, row in enumerate(_sheet(workbook, sheet_name), start=2):
+            patient_id = str(row.get("patient_id", "")).strip()
+            if patient_id and patient_id not in patient_ids:
+                issues.append(_issue(sheet_name, row_number, "patient_id", "error", f"患者ID {patient_id} 不存在于 Patients sheet"))
+            value = row.get(date_field)
+            if not _blank(value) and not _valid_date(value):
+                issues.append(_issue(sheet_name, row_number, date_field, "error", f"{date_field} 日期格式应为 YYYY-MM-DD"))
+    return issues
+
+
+def _existing_patient_ids(connection: sqlite3.Connection, patient_ids: set[str]) -> set[str]:
+    if not patient_ids:
+        return set()
+    existing = set()
+    for patient_id in patient_ids:
+        row = connection.execute(
+            "SELECT patient_id FROM patients WHERE patient_id = ?", (patient_id,)
+        ).fetchone()
+        if row:
+            existing.add(patient_id)
+    return existing
+
+
+def _issue(
+    sheet_name: str,
+    row_number: int | None,
+    field_name: str,
+    severity: str,
+    message: str,
+) -> Dict[str, Any]:
+    return {
+        "sheet_name": sheet_name,
+        "row_number": row_number,
+        "field_name": field_name,
+        "severity": severity,
+        "message": message,
+    }
+
+
+def _blank(value: Any) -> bool:
+    return value in ("", None)
+
+
+def _valid_date(value: Any) -> bool:
+    text = _as_text(value)
+    if not text:
+        return True
+    try:
+        datetime.strptime(text, "%Y-%m-%d")
+    except ValueError:
+        return False
+    return True
+
+
+def _number(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _import_template_workbook(
-    connection: sqlite3.Connection, workbook: WorkbookData, imported_at: str
+    connection: sqlite3.Connection, workbook: WorkbookData, imported_at: str, batch_id: int
 ) -> Dict[str, int]:
     patients = _sheet(workbook, "patients")
     _validate_required_patients(patients)
@@ -445,13 +884,14 @@ def _import_template_workbook(
         }
         connection.execute(
             """
-            INSERT INTO patients(patient_id, data_json, imported_at)
-            VALUES (?, ?, ?)
+            INSERT INTO patients(patient_id, data_json, imported_at, import_batch_id)
+            VALUES (?, ?, ?, ?)
             ON CONFLICT(patient_id) DO UPDATE SET
                 data_json = excluded.data_json,
-                imported_at = excluded.imported_at
+                imported_at = excluded.imported_at,
+                import_batch_id = excluded.import_batch_id
             """,
-            (patient_id, json.dumps(normalized_patient, ensure_ascii=False), imported_at),
+            (patient_id, json.dumps(normalized_patient, ensure_ascii=False), imported_at, batch_id),
         )
 
         visit_rows.extend(_template_timeline_rows(patient_id, symptoms_by_patient.get(patient_id, []), "symptom_id", "assessment_date", "症状评分", _symptom_detail))
@@ -479,9 +919,8 @@ def _import_template_workbook(
                 }
             )
 
-    _upsert_visits(connection, visit_rows)
-    _upsert_labs(connection, lab_rows)
-    connection.commit()
+    _upsert_visits(connection, visit_rows, batch_id)
+    _upsert_labs(connection, lab_rows, batch_id)
     return {
         "patients": len(patients),
         "visits": len(visit_rows),
@@ -491,48 +930,52 @@ def _import_template_workbook(
     }
 
 
-def _upsert_visits(connection: sqlite3.Connection, rows: List[Dict[str, Any]]) -> None:
+def _upsert_visits(connection: sqlite3.Connection, rows: List[Dict[str, Any]], batch_id: int) -> None:
     for row in rows:
         if not row.get("patient_id"):
             continue
         event_id = str(row.get("event_id") or f"{row.get('patient_id')}-{row.get('event_date')}-{row.get('event_type')}")
         connection.execute(
             """
-            INSERT INTO visits(event_id, patient_id, event_date, data_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO visits(event_id, patient_id, event_date, data_json, import_batch_id)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(event_id) DO UPDATE SET
                 patient_id = excluded.patient_id,
                 event_date = excluded.event_date,
-                data_json = excluded.data_json
+                data_json = excluded.data_json,
+                import_batch_id = excluded.import_batch_id
             """,
             (
                 event_id,
                 str(row["patient_id"]),
                 _as_text(row.get("event_date")),
                 json.dumps(row, ensure_ascii=False),
+                batch_id,
             ),
         )
 
 
-def _upsert_labs(connection: sqlite3.Connection, rows: List[Dict[str, Any]]) -> None:
+def _upsert_labs(connection: sqlite3.Connection, rows: List[Dict[str, Any]], batch_id: int) -> None:
     for row in rows:
         if not row.get("patient_id"):
             continue
         lab_id = str(row.get("lab_id") or f"{row.get('patient_id')}-{row.get('sample_date')}")
         connection.execute(
             """
-            INSERT INTO labs(lab_id, patient_id, sample_date, data_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO labs(lab_id, patient_id, sample_date, data_json, import_batch_id)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(lab_id) DO UPDATE SET
                 patient_id = excluded.patient_id,
                 sample_date = excluded.sample_date,
-                data_json = excluded.data_json
+                data_json = excluded.data_json,
+                import_batch_id = excluded.import_batch_id
             """,
             (
                 lab_id,
                 str(row["patient_id"]),
                 _as_text(row.get("sample_date")),
                 json.dumps(row, ensure_ascii=False),
+                batch_id,
             ),
         )
 
@@ -639,6 +1082,46 @@ def _validate_required_patients(patients: Iterable[Dict[str, Any]]) -> None:
     for index, row in enumerate(patients, start=2):
         if not row.get("patient_id"):
             raise ValueError(f"Patients sheet row {index} missing patient_id")
+
+
+def _longitudinal_records(
+    connection: sqlite3.Connection, patient_id: str
+) -> Dict[str, List[Dict[str, Any]]]:
+    visits = _load_many(connection, "visits", patient_id, "event_date")
+    groups = {
+        "symptoms": [],
+        "pulmonary_tests": [],
+        "lab_events": [],
+        "pathogen_tests": [],
+        "ct_records": [],
+        "medications": [],
+        "exacerbations": [],
+        "followups": [],
+        "other_events": [],
+    }
+    mapping = {
+        "症状评分": "symptoms",
+        "肺功能检查": "pulmonary_tests",
+        "实验室检验": "lab_events",
+        "病原学检测": "pathogen_tests",
+        "CT检查": "ct_records",
+        "用药记录": "medications",
+        "急性加重": "exacerbations",
+        "随访": "followups",
+    }
+    for visit in visits:
+        key = mapping.get(visit.get("event_type"), "other_events")
+        groups[key].append(visit)
+    groups["labs"] = _load_many(connection, "labs", patient_id, "sample_date")
+    return groups
+
+
+def _followup_status(patient: Dict[str, Any]) -> str:
+    if not patient.get("last_followup_date"):
+        return "未随访"
+    if str(patient.get("survival_status", "")).strip() == "失访":
+        return "失访"
+    return "已随访"
 
 
 def _pathogen_rows(patient: Dict[str, Any], labs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

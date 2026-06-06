@@ -2,7 +2,7 @@
 {% block content %}
 <section class="section">
   <h1>数据导入</h1>
-  <p class="muted">请选择按照导入模板填写的 .xlsx 文件。系统不会自动读取任何默认位置的数据。</p>
+  <p class="muted">请选择按照官方固定模板填写的 .xlsx 文件。系统不会自动读取任何默认位置的数据。</p>
   <div class="panel">
     <form class="upload-form" method="post" action="/import-upload" enctype="multipart/form-data">
       <label class="file-picker">
@@ -11,7 +11,40 @@
       </label>
       <button class="primary" type="submit">导入患者数据</button>
     </form>
-    <p class="hint">支持新模板：patients、smoking_history、comorbidities、symptom_scores、pulmonary_tests、lab_results、pathogen_results、ct_features、medications、exacerbations、followups。</p>
+    <p class="hint">官方模板：data/copd_patient_import_template.xlsx。正式演示请使用固定模板；旧 mock 表格仅保留为回归兼容输入。</p>
+    <p class="hint">业务 Sheet：patients、smoking_history、comorbidities、symptom_scores、pulmonary_tests、lab_results、pathogen_results、ct_features、medications、exacerbations、followups。</p>
+  </div>
+  <div class="panel">
+    <div class="section-head compact-head">
+      <h2>最近导入批次</h2>
+      <a class="button" href="/imports">查看全部</a>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>批次</th>
+          <th>文件名</th>
+          <th>状态</th>
+          <th>患者数</th>
+          <th>导入时间</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for batch in batches[:5] %}
+        <tr>
+          <td>#{{ batch.batch_id }}</td>
+          <td>{{ batch.file_name }}</td>
+          <td><span class="badge status-{{ batch.status }}">{{ "成功" if batch.status == "success" else ("失败" if batch.status == "failed" else "处理中") }}</span></td>
+          <td>{{ batch.counts.patients or 0 }}</td>
+          <td>{{ batch.imported_at }}</td>
+          <td><a href="/imports/{{ batch.batch_id }}">查看详情</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">暂无导入记录。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </section>
 {% endblock %}
