@@ -4,12 +4,20 @@
   <div class="section-head">
     <div>
       <h1>智能评估结果：{{ patient.patient_id }}</h1>
-      <p class="muted">展示数据质量、摘要、表型、风险和关键证据。</p>
+      <p class="muted">展示数据质量、摘要、表型、风险、模型调用和关键证据。</p>
     </div>
-    <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
-      <button class="primary" type="submit">重新评估</button>
-    </form>
+    <div class="assessment-actions">
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="local_rules">
+        <button type="submit">本地规则评估</button>
+      </form>
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="api">
+        <button class="primary" type="submit">API 智能评估</button>
+      </form>
+    </div>
   </div>
+
   {% if assessment %}
   <div class="table-grid">
     <section class="panel">
@@ -34,9 +42,14 @@
             <th>数据提示</th>
             <td>{{ assessment.data_quality.warnings | join("；") }}</td>
           </tr>
+          <tr>
+            <th>评估方式</th>
+            <td>{{ "本地规则评估" if assessment.assessment_mode == "local_rules" else "API 智能评估" }}</td>
+          </tr>
         </tbody>
       </table>
     </section>
+
     <section class="panel">
       <h2>表型与风险</h2>
       <table class="info-table">
@@ -91,6 +104,46 @@
   </section>
 
   <section class="panel">
+    <h2>模型调用与版本</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>节点</th>
+          <th>模型</th>
+          <th>模型版本</th>
+          <th>输入数据版本</th>
+          <th>状态</th>
+          <th>失败原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in model_logs %}
+        <tr>
+          <td>{{ log.node_name }}</td>
+          <td>{{ log.model_name or "未配置" }}</td>
+          <td>{{ log.model_version or "未配置" }}</td>
+          <td>{{ log.input_data_version or "-" }}</td>
+          <td>
+            <span class="badge status-{{ 'success' if log.status in ['success', 'reused'] else 'failed' }}">
+              {% if log.status == "success" %}
+                成功
+              {% elif log.status == "reused" %}
+                复用结果
+              {% else %}
+                {{ log.status }}
+              {% endif %}
+            </span>
+          </td>
+          <td>{{ log.failure_reason or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">暂无模型调用日志。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
     <h2>关键证据</h2>
     <table class="data-table evidence-table">
       <thead>
@@ -109,6 +162,8 @@
           <td>{{ item.source_dates | join("、") }}</td>
           <td>{{ item.source_fields | join("、") }}</td>
         </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">暂无关键证据。</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -139,11 +194,40 @@
       </tbody>
     </table>
   </section>
+
+  <section class="panel">
+    <h2>LangGraph 节点日志</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>节点</th>
+          <th>开始时间</th>
+          <th>结束时间</th>
+          <th>状态</th>
+          <th>错误信息</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in node_logs %}
+        <tr>
+          <td>{{ log.node_name }}</td>
+          <td>{{ log.started_at_display or log.started_at or "-" }}</td>
+          <td>{{ log.ended_at_display or log.ended_at or "-" }}</td>
+          <td><span class="badge status-{{ 'success' if log.status == 'success' else 'failed' }}">{{ "成功" if log.status == "success" else "失败" }}</span></td>
+          <td>{{ log.error_message or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">暂无节点运行日志。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
   <div class="actions">
     <a class="button" href="/assessments/{{ assessment.assessment_id }}/report">查看报告草稿</a>
   </div>
   {% else %}
-  <div class="panel empty">该患者暂无评估结果，请先触发智能评估。</div>
+  <div class="panel empty">该患者暂无评估结果，请先选择一种方式触发智能评估。</div>
   {% endif %}
 </section>
 {% endblock %}

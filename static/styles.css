@@ -54,6 +54,17 @@ nav {
   justify-content: space-between;
 }
 
+.patients-head {
+  align-items: flex-start;
+}
+
+.page-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  padding-top: 6px;
+}
+
 h1,
 h2,
 p {
@@ -105,6 +116,18 @@ h2 {
   min-width: 190px;
 }
 
+.patients-filter {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d9e0e3;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.patients-filter select[name="import_batch_id"] {
+  flex: 1 1 240px;
+}
+
 select {
   background: #ffffff;
   border: 1px solid #c8d2d7;
@@ -122,6 +145,33 @@ select {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 8px;
+}
+
+.list-toolbar {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d9e0e3;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.list-toolbar-summary {
+  color: #617079;
+  font-size: 14px;
+}
+
+.list-toolbar-summary strong {
+  color: #173d3a;
+  font-size: 15px;
+}
+
+.list-toolbar-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
 }
 
 .upload-form {
@@ -353,6 +403,18 @@ th {
   gap: 12px;
 }
 
+.assessment-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.assessment-actions form {
+  margin: 0;
+}
+
 .timeline {
   display: grid;
   gap: 14px;
@@ -428,6 +490,21 @@ pre {
 
 .result-list dd {
   margin: 0;
+}
+
+.risk-高 {
+  background: #fdebea;
+  color: #a12d25;
+}
+
+.risk-中 {
+  background: #fff4d8;
+  color: #7a5600;
+}
+
+.risk-低 {
+  background: #e9f6ed;
+  color: #1f6b3a;
 }
 
 .risk-高 {
@@ -630,6 +707,28 @@ pre {
   .section-head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .page-actions,
+  .list-toolbar {
+    align-items: stretch;
+    width: 100%;
+  }
+
+  .list-toolbar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .list-toolbar-actions {
+    width: 100%;
+  }
+
+  .page-actions .button,
+  .list-toolbar-actions .button,
+  .list-toolbar-actions button {
+    flex: 1 1 0;
+    justify-content: center;
   }
 
   .report-header {

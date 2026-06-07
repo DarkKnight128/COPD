@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict
 
@@ -17,6 +18,8 @@ from copd_graph.poc_storage import (
     connect,
     delete_patients,
     get_assessment,
+    get_assessment_model_logs,
+    get_assessment_node_logs,
     get_import_batch,
     get_latest_assessment,
     get_patient_bundle,
@@ -26,6 +29,7 @@ from copd_graph.poc_storage import (
     list_patients,
     save_assessment,
 )
+from copd_graph.time_utils import LOCAL_TIMEZONE
 from copd_graph.xlsx_importer import parse_xlsx_bytes
 
 
@@ -43,6 +47,29 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="COPD POC Demo", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
+
+
+def format_local_time(value: Any) -> str:
+    if not value:
+        return "-"
+    text = str(value)
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(LOCAL_TIMEZONE).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def format_node_logs(node_logs: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    formatted = []
+    for log in node_logs:
+        item = dict(log)
+        item["started_at_display"] = format_local_time(item.get("started_at"))
+        item["ended_at_display"] = format_local_time(item.get("ended_at"))
+        formatted.append(item)
+    return formatted
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -161,8 +188,11 @@ def timeline_page(request: Request, patient_id: str) -> HTMLResponse:
 
 
 @app.post("/patients/{patient_id}/assessment")
-def run_assessment_page(patient_id: str) -> RedirectResponse:
-    assessment = run_patient_assessment(patient_id)
+def run_assessment_page(
+    patient_id: str,
+    assessment_mode: str = Form(default="api"),
+) -> RedirectResponse:
+    assessment = run_patient_assessment(patient_id, assessment_mode=assessment_mode)
     return RedirectResponse(url=f"/assessments/{assessment['assessment_id']}", status_code=303)
 
 
@@ -171,6 +201,16 @@ def patient_assessment_page(request: Request, patient_id: str) -> HTMLResponse:
     with connect(DEFAULT_DB_PATH) as connection:
         bundle = get_patient_bundle(connection, patient_id)
         assessment = get_latest_assessment(connection, patient_id)
+        model_logs = (
+            get_assessment_model_logs(connection, assessment["assessment_id"])
+            if assessment
+            else []
+        )
+        node_logs = (
+            get_assessment_node_logs(connection, assessment["assessment_id"])
+            if assessment
+            else []
+        )
     if bundle is None:
         raise HTTPException(status_code=404, detail="Patient not found")
     return templates.TemplateResponse(
@@ -179,6 +219,8 @@ def patient_assessment_page(request: Request, patient_id: str) -> HTMLResponse:
         {
             "patient": bundle["patient"],
             "assessment": assessment,
+            "model_logs": model_logs,
+            "node_logs": format_node_logs(node_logs),
         },
     )
 
@@ -187,6 +229,8 @@ def patient_assessment_page(request: Request, patient_id: str) -> HTMLResponse:
 def assessment_page(request: Request, assessment_id: str) -> HTMLResponse:
     with connect(DEFAULT_DB_PATH) as connection:
         assessment = get_assessment(connection, assessment_id)
+        model_logs = get_assessment_model_logs(connection, assessment_id)
+        node_logs = get_assessment_node_logs(connection, assessment_id)
     if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
     return templates.TemplateResponse(
@@ -195,6 +239,8 @@ def assessment_page(request: Request, assessment_id: str) -> HTMLResponse:
         {
             "patient": {"patient_id": assessment["patient_id"]},
             "assessment": assessment,
+            "model_logs": model_logs,
+            "node_logs": format_node_logs(node_logs),
         },
     )
 
@@ -300,16 +346,20 @@ def api_timeline(patient_id: str) -> Dict[str, Any]:
 
 
 @app.post("/api/patients/{patient_id}/assessment")
-def api_run_assessment(patient_id: str) -> Dict[str, Any]:
-    return run_patient_assessment(patient_id)
+def api_run_assessment(patient_id: str, assessment_mode: str = "api") -> Dict[str, Any]:
+    return run_patient_assessment(patient_id, assessment_mode=assessment_mode)
 
 
 @app.get("/api/assessments/{assessment_id}")
 def api_assessment(assessment_id: str) -> Dict[str, Any]:
     with connect(DEFAULT_DB_PATH) as connection:
         assessment = get_assessment(connection, assessment_id)
+        model_logs = get_assessment_model_logs(connection, assessment_id)
+        node_logs = get_assessment_node_logs(connection, assessment_id)
     if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
+    assessment["model_logs"] = model_logs
+    assessment["node_logs"] = format_node_logs(node_logs)
     return assessment
 
 
@@ -326,14 +376,15 @@ def api_report(assessment_id: str) -> Dict[str, Any]:
     }
 
 
-def run_patient_assessment(patient_id: str) -> Dict[str, Any]:
+def run_patient_assessment(patient_id: str, assessment_mode: str = "api") -> Dict[str, Any]:
+    mode = assessment_mode if assessment_mode in {"api", "local_rules"} else "api"
     with connect(DEFAULT_DB_PATH) as connection:
         try:
             patient_data = build_patient_state_data(connection, patient_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail=str(error)) from error
         graph = build_graph()
-        result = graph.invoke({"raw_patient_data": patient_data})
+        result = graph.invoke({"raw_patient_data": patient_data, "assessment_mode": mode})
         return save_assessment(connection, patient_id, result)
 
 

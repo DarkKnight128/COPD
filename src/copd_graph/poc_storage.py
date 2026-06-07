@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, List
 
 from copd_graph.xlsx_importer import WorkbookData
+from copd_graph.time_utils import local_isoformat, now_local
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -153,6 +155,32 @@ def init_database(connection: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             result_json TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS model_call_logs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assessment_id TEXT NOT NULL,
+            patient_id TEXT NOT NULL,
+            node_name TEXT NOT NULL,
+            called_at TEXT NOT NULL,
+            input_data_version TEXT,
+            model_name TEXT,
+            model_version TEXT,
+            provider TEXT,
+            status TEXT NOT NULL,
+            failure_reason TEXT,
+            output_json TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS graph_node_logs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assessment_id TEXT NOT NULL,
+            patient_id TEXT NOT NULL,
+            node_name TEXT NOT NULL,
+            started_at TEXT,
+            ended_at TEXT,
+            status TEXT NOT NULL,
+            error_message TEXT
+        );
         """
     )
     _ensure_column(connection, "patients", "import_batch_id", "INTEGER")
@@ -166,7 +194,7 @@ def import_workbook(
     connection: sqlite3.Connection, workbook: WorkbookData, source_filename: str = "uploaded.xlsx"
 ) -> Dict[str, Any]:
     init_database(connection)
-    now = datetime.utcnow().isoformat(timespec="seconds")
+    now = local_isoformat(timespec="seconds")
     batch_id = _create_import_batch(connection, source_filename, now)
     validation = validate_workbook(connection, workbook)
     _save_import_issues(connection, batch_id, validation["issues"])
@@ -372,10 +400,20 @@ def delete_patients(connection: sqlite3.Connection, patient_ids: Iterable[str]) 
             "labs": 0,
             "model_outputs": 0,
             "assessments": 0,
+            "model_call_logs": 0,
+            "graph_node_logs": 0,
         }
 
     counts = {"requested": len(ids)}
-    for table_name in ["visits", "labs", "model_outputs", "assessments", "patients"]:
+    for table_name in [
+        "visits",
+        "labs",
+        "model_outputs",
+        "model_call_logs",
+        "graph_node_logs",
+        "assessments",
+        "patients",
+    ]:
         deleted = 0
         for patient_id in ids:
             cursor = connection.execute(
@@ -431,7 +469,7 @@ def build_patient_state_data(connection: sqlite3.Connection, patient_id: str) ->
         }
     ]
 
-    return {
+    state_data = {
         "patient": {
             "patient_id": patient.get("patient_id"),
             "age": patient.get("age"),
@@ -469,14 +507,17 @@ def build_patient_state_data(connection: sqlite3.Connection, patient_id: str) ->
         },
         "mock_model_output": bundle["model_output"],
     }
+    state_data["data_version"] = _data_version(state_data)
+    return state_data
 
 
 def save_assessment(
     connection: sqlite3.Connection, patient_id: str, result: Dict[str, Any]
 ) -> Dict[str, Any]:
     init_database(connection)
-    timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    timestamp = now_local().strftime("%Y%m%d%H%M%S%f")
     assessment_id = f"POC-{patient_id}-{timestamp}"
+    created_at = local_isoformat(timespec="seconds")
     connection.execute(
         """
         INSERT INTO assessments(assessment_id, patient_id, created_at, result_json)
@@ -485,10 +526,12 @@ def save_assessment(
         (
             assessment_id,
             patient_id,
-            datetime.utcnow().isoformat(timespec="seconds"),
+            created_at,
             json.dumps(result, ensure_ascii=False),
         ),
     )
+    _save_model_call_logs(connection, assessment_id, patient_id, created_at, result)
+    _save_node_run_logs(connection, assessment_id, patient_id, result)
     connection.commit()
     return {"assessment_id": assessment_id, **result}
 
@@ -545,6 +588,44 @@ def get_latest_model_output(connection: sqlite3.Connection, patient_id: str) -> 
     if row is None:
         return None
     return json.loads(row["data_json"])
+
+
+def get_assessment_model_logs(
+    connection: sqlite3.Connection, assessment_id: str
+) -> List[Dict[str, Any]]:
+    init_database(connection)
+    rows = connection.execute(
+        """
+        SELECT node_name, called_at, input_data_version, model_name, model_version,
+               provider, status, failure_reason, output_json
+        FROM model_call_logs
+        WHERE assessment_id = ?
+        ORDER BY log_id
+        """,
+        (assessment_id,),
+    ).fetchall()
+    logs = []
+    for row in rows:
+        item = dict(row)
+        item["output"] = json.loads(item.pop("output_json") or "{}")
+        logs.append(item)
+    return logs
+
+
+def get_assessment_node_logs(
+    connection: sqlite3.Connection, assessment_id: str
+) -> List[Dict[str, Any]]:
+    init_database(connection)
+    rows = connection.execute(
+        """
+        SELECT node_name, started_at, ended_at, status, error_message
+        FROM graph_node_logs
+        WHERE assessment_id = ?
+        ORDER BY log_id
+        """,
+        (assessment_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def list_import_batches(connection: sqlite3.Connection) -> List[Dict[str, Any]]:
@@ -1122,6 +1203,74 @@ def _followup_status(patient: Dict[str, Any]) -> str:
     if str(patient.get("survival_status", "")).strip() == "失访":
         return "失访"
     return "已随访"
+
+
+def _save_model_call_logs(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    patient_id: str,
+    called_at: str,
+    result: Dict[str, Any],
+) -> None:
+    input_data_version = (
+        result.get("patient_data", {}).get("data_version")
+        or result.get("raw_patient_data", {}).get("data_version")
+        or result.get("model_metadata", {}).get("input_data_version", "")
+    )
+    for node_name, log in result.get("model_call_results", {}).items():
+        connection.execute(
+            """
+            INSERT INTO model_call_logs(
+                assessment_id, patient_id, node_name, called_at, input_data_version,
+                model_name, model_version, provider, status, failure_reason, output_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                assessment_id,
+                patient_id,
+                node_name,
+                called_at,
+                input_data_version,
+                log.get("model_name", ""),
+                log.get("model_version", ""),
+                log.get("provider", ""),
+                log.get("status", ""),
+                log.get("failure_reason", ""),
+                json.dumps(log.get("output", {}), ensure_ascii=False),
+            ),
+        )
+
+
+def _save_node_run_logs(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    patient_id: str,
+    result: Dict[str, Any],
+) -> None:
+    for log in result.get("node_run_logs", []):
+        connection.execute(
+            """
+            INSERT INTO graph_node_logs(
+                assessment_id, patient_id, node_name, started_at, ended_at, status, error_message
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                assessment_id,
+                patient_id,
+                log.get("node_name", ""),
+                log.get("started_at", ""),
+                log.get("ended_at", ""),
+                log.get("status", ""),
+                log.get("error_message", ""),
+            ),
+        )
+
+
+def _data_version(payload: Dict[str, Any]) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 def _pathogen_rows(patient: Dict[str, Any], labs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:

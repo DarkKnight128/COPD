@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="section">
-  <div class="section-head">
+<section class="section patients-page">
+  <div class="section-head patients-head">
     <div>
       <h1>患者列表</h1>
       <p class="muted">展示已导入患者、风险等级和最近评估状态。</p>
     </div>
-    <a class="button" href="/import">导入数据</a>
   </div>
-  <form class="filter-bar" method="get" action="/patients">
+
+  <form class="filter-bar patients-filter" method="get" action="/patients">
     <input name="q" value="{{ q }}" placeholder="按患者 ID 检索">
     <select name="risk">
       <option value="">全部风险</option>
@@ -36,10 +36,18 @@
     </select>
     <button type="submit">筛选</button>
   </form>
+
   <form method="post" action="/patients/delete" onsubmit="return confirm('确认删除选中的患者数据？该操作会同时删除关联时间轴、检验、模型输出和评估结果。');">
-    <div class="table-actions">
-      <button class="danger" type="submit">删除选中</button>
+    <div class="list-toolbar">
+      <div class="list-toolbar-summary">
+        当前结果：<strong>{{ patients|length }}</strong> 位患者
+      </div>
+      <div class="list-toolbar-actions">
+        <a class="button primary" href="/import">导入数据</a>
+        <button class="danger" type="submit">删除选中</button>
+      </div>
     </div>
+
     <table>
       <thead>
         <tr>
@@ -65,7 +73,7 @@
           <td>{{ patient.age }}</td>
           <td>{{ patient.cat_score }}</td>
           <td>{{ patient.mmrc_score }}</td>
-          <td><span class="badge">{{ patient.risk_level }}</span></td>
+          <td><span class="badge risk-{{ patient.risk_level }}">{{ patient.risk_level }}</span></td>
           <td>{{ patient.assessment_status }}</td>
           <td>{{ patient.followup_status }}</td>
           <td>{% if patient.import_batch_id %}<a href="/imports/{{ patient.import_batch_id }}">#{{ patient.import_batch_id }}</a>{% else %}-{% endif %}</td>

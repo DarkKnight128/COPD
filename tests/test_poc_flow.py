@@ -119,6 +119,13 @@ class PocFlowTest(unittest.TestCase):
             result = build_graph().invoke({"raw_patient_data": patient_data})
 
         self.assertTrue(result["data_quality"]["can_evaluate"])
+        self.assertIn("current_status_summarizer", result["model_call_results"])
+        self.assertEqual(
+            result["model_call_results"]["current_status_summarizer"]["status"],
+            "disabled",
+        )
+        self.assertIn("risk_assessor", result["model_call_results"])
+        self.assertIn("node_run_logs", result)
         self.assertIn("频繁急性加重表型", result["phenotype"]["phenotype_tags"])
         self.assertTrue(result["safety_check_result"]["passed"])
         self.assertIn("report_draft", result)
@@ -168,9 +175,30 @@ class PocFlowTest(unittest.TestCase):
         assessment_id = response.json()["assessment_id"]
 
         self.assertEqual(client.get(f"/api/assessments/{assessment_id}").status_code, 200)
+        assessment_payload = client.get(f"/api/assessments/{assessment_id}").json()
+        self.assertGreaterEqual(len(assessment_payload["model_logs"]), 3)
+        self.assertGreaterEqual(len(assessment_payload["node_logs"]), 7)
+        self.assertIn("started_at_display", assessment_payload["node_logs"][0])
+        self.assertNotIn("DASHSCOPE_API_KEY", str(assessment_payload))
         report_response = client.post(f"/api/assessments/{assessment_id}/report")
         self.assertEqual(report_response.status_code, 200)
         self.assertIn("辅助评估报告草稿", report_response.json()["report_draft"])
+
+    def test_local_rule_assessment_mode_skips_qwen_api(self):
+        from copd_graph import web_app
+
+        web_app.DEFAULT_DB_PATH = TEST_DB_PATH
+        client = TestClient(web_app.app)
+
+        response = client.post("/api/patients/TEST-001/assessment?assessment_mode=local_rules")
+        self.assertEqual(response.status_code, 200)
+        assessment_id = response.json()["assessment_id"]
+
+        assessment_payload = client.get(f"/api/assessments/{assessment_id}").json()
+        statuses = {log["status"] for log in assessment_payload["model_logs"]}
+        self.assertEqual(statuses, {"local_rules"})
+        self.assertEqual(assessment_payload["assessment_mode"], "local_rules")
+        self.assertNotIn("DASHSCOPE_API_KEY", str(assessment_payload))
 
     def test_web_delete_single_and_bulk_patients(self):
         from copd_graph import web_app
@@ -229,6 +257,28 @@ class PocFlowTest(unittest.TestCase):
         patient_response = client.get("/api/patients?q=COPD-S001")
         self.assertEqual(patient_response.status_code, 200)
         self.assertEqual(patient_response.json()["count"], 1)
+
+    def test_qwen_config_does_not_expose_secrets(self):
+        env_example = PROJECT_ROOT / ".env.example"
+        gitignore = PROJECT_ROOT / ".gitignore"
+        self.assertTrue(env_example.exists())
+        env_text = env_example.read_text(encoding="utf-8")
+        self.assertIn("DASHSCOPE_API_KEY=", env_text)
+        self.assertIn("QWEN_ENABLE=false", env_text)
+        self.assertNotIn("sk-", env_text)
+        self.assertIn(".env", gitignore.read_text(encoding="utf-8"))
+
+    def test_web_time_filter_displays_beijing_time(self):
+        from copd_graph.web_app import format_local_time
+
+        self.assertEqual(
+            format_local_time("2026-06-06T19:02:39.807"),
+            "2026-06-07 03:02:39",
+        )
+        self.assertEqual(
+            format_local_time("2026-06-07T03:02:39.807+08:00"),
+            "2026-06-07 03:02:39",
+        )
 
     def test_import_logs_and_patient_filters(self):
         from copd_graph import web_app

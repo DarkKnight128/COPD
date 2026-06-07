@@ -1,6 +1,6 @@
 # COPD LangGraph 智能辅助评估 POC
 
-这是一个慢阻肺病智能诊疗决策支持系统的 POC/MVP Demo。当前已经从第 3-4 周 POC 主流程，推进到第 5-6 周 MVP 数据层增强：
+这是一个慢阻肺病智能诊疗决策支持系统的 POC/MVP Demo。当前已经从第 3-4 周 POC 主流程，推进到第 7-8 周 MVP 模型层增强：
 
 ```text
 导入固定模板样例数据
@@ -9,6 +9,7 @@
 -> 患者总览
 -> 病程时间轴
 -> 触发 LangGraph 智能评估
+-> 可选调用通义千问 API
 -> 展示结构化评估结果
 -> 生成报告草稿
 ```
@@ -32,18 +33,27 @@
   - 成功/失败状态
   - 导入统计
   - 错误和提示明细
+- 支持 MVP 模型层增强：
+  - 通义千问 API 配置入口
+  - 当前状态、表型、风险节点拆分
+  - 模型调用日志
+  - LangGraph 节点运行日志
+  - 模型失败时规则 fallback
 - 提供 5 个核心页面：
   - 患者列表页
   - 患者总览页
   - 病程时间轴页
   - 智能评估结果页
   - 报告生成页
-- 保留 LangGraph 最小节点顺序：
+- LangGraph 节点顺序：
   - `load_patient_data`
   - `data_quality_check`
   - `timeline_analyzer`
-  - `assessment_generator`
+  - `current_status_summarizer`
+  - `phenotype_assessor`
+  - `risk_assessor`
   - `evidence_builder`
+  - `safety_harness_check`
   - `safety_check`
   - `report_generator`
 - `key_evidence` 已增强为可追踪结构，包含 `source`、`source_dates`、`source_fields`。
@@ -55,6 +65,29 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 ```
+
+## 通义千问配置
+
+项目默认不调用在线模型，`QWEN_ENABLE=false` 时会使用规则占位评估。
+
+如需启用通义千问 API：
+
+1. 复制 `.env.example` 为 `.env`。
+2. 在 `.env` 中填写：
+
+```text
+DASHSCOPE_API_KEY=你的API Key
+QWEN_MODEL_NAME=你的模型名
+QWEN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_TIMEOUT_SECONDS=30
+QWEN_ENABLE=true
+```
+
+安全注意：
+
+- `.env` 已在 `.gitignore` 中忽略，不要提交到 GitHub。
+- `.env.example` 只能放占位字段，不要填写真实 API Key。
+- 系统不会在页面、API 返回或数据库日志中保存 API Key。
 
 ## 运行单患者 LangGraph Sample
 
@@ -119,4 +152,4 @@ python -m pytest -q
 - CT 只使用报告文本或已提取影像特征。
 - mNGS/病原学结果只作为感染相关线索。
 - 报告仅为辅助评估草稿，不能替代医生临床判断。
-- 当前已实现导入日志；医生复核、报告编辑确认、权限和版本管理仍留到后续 MVP 临床流程阶段。
+- 当前已实现导入日志、模型调用日志和节点运行日志；医生复核、报告编辑确认、权限和报告版本管理仍留到后续 MVP 临床流程阶段。
