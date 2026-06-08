@@ -6,6 +6,7 @@
       <h1>智能评估结果：{{ patient.patient_id }}</h1>
       <p class="muted">展示数据质量、摘要、表型、风险、模型调用、关键证据和临床复核状态。</p>
     </div>
+    {% if current_user.role in ["管理员", "医生"] %}
     <div class="assessment-actions">
       <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
         <input type="hidden" name="assessment_mode" value="local_rules">
@@ -16,6 +17,7 @@
         <button class="primary" type="submit">API 智能评估</button>
       </form>
     </div>
+    {% endif %}
   </div>
 
   {% if assessment %}
@@ -41,10 +43,14 @@
         </tr>
       </tbody>
     </table>
-    {% if report_record %}
+    {% if report_record and current_user.role == "医生" %}
     <div class="actions compact-actions">
       <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/review">提交复核</a>
       <a class="button" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
+    </div>
+    {% elif report_record and current_user.role == "管理员" %}
+    <div class="actions compact-actions">
       <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
     </div>
     {% endif %}

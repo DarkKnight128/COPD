@@ -55,15 +55,19 @@
         当前结果：<strong>{{ patients|length }}</strong> 位患者
       </div>
       <div class="list-toolbar-actions">
+        {% if current_user.role == "管理员" %}
         <a class="button primary" href="/import">导入数据</a>
         <button class="danger" type="submit">删除选中</button>
+        {% endif %}
       </div>
     </div>
 
     <table>
       <thead>
         <tr>
+          {% if current_user.role == "管理员" %}
           <th class="select-col"><input type="checkbox" aria-label="全选" onclick="document.querySelectorAll('input[name=patient_ids]').forEach(item => item.checked = this.checked)"></th>
+          {% endif %}
           <th>患者ID</th>
           <th>性别</th>
           <th>年龄</th>
@@ -81,7 +85,9 @@
       <tbody>
         {% for patient in patients %}
         <tr>
+          {% if current_user.role == "管理员" %}
           <td class="select-col"><input type="checkbox" name="patient_ids" value="{{ patient.patient_id }}" aria-label="选择 {{ patient.patient_id }}"></td>
+          {% endif %}
           <td>{{ patient.patient_id }}</td>
           <td>{{ patient.sex }}</td>
           <td>{{ patient.age }}</td>
@@ -99,15 +105,17 @@
               {% if patient.latest_assessment_id %}
               <a href="/assessments/{{ patient.latest_assessment_id }}">评估</a>
               {% endif %}
-              {% if patient.latest_report_id %}
+              {% if patient.latest_report_id and current_user.role == "医生" %}
               <a href="/reports/{{ patient.latest_report_id }}/edit">报告</a>
               {% endif %}
+              {% if current_user.role == "管理员" %}
               <button class="link-danger" type="submit" formaction="/patients/{{ patient.patient_id }}/delete" onclick="return confirm('确认删除患者 {{ patient.patient_id }} 的全部数据？');">删除</button>
+              {% endif %}
             </div>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="13" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
+        <tr><td colspan="13" class="empty">暂无患者数据，请由管理员先导入样例数据。</td></tr>
         {% endfor %}
       </tbody>
     </table>

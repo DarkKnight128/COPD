@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import hashlib
+import hmac
+import secrets
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -217,13 +219,214 @@ def init_database(connection: sqlite3.Connection) -> None:
             review_comment TEXT,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            role TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            username TEXT,
+            role TEXT,
+            action TEXT NOT NULL,
+            object_type TEXT,
+            object_id TEXT,
+            result TEXT NOT NULL,
+            failure_reason TEXT
+        );
         """
     )
     _ensure_column(connection, "patients", "import_batch_id", "INTEGER")
     _ensure_column(connection, "visits", "import_batch_id", "INTEGER")
     _ensure_column(connection, "labs", "import_batch_id", "INTEGER")
     _ensure_column(connection, "model_outputs", "import_batch_id", "INTEGER")
+    seed_demo_users(connection)
     connection.commit()
+
+
+DEMO_USERS = [
+    ("admin", "管理员", "管理员", "admin123"),
+    ("doctor", "演示医生", "医生", "doctor123"),
+    ("researcher", "科研人员", "科研人员", "researcher123"),
+]
+
+
+def seed_demo_users(connection: sqlite3.Connection) -> None:
+    now = local_isoformat(timespec="seconds")
+    for username, display_name, role, password in DEMO_USERS:
+        existing = connection.execute(
+            "SELECT user_id FROM users WHERE username = ?", (username,)
+        ).fetchone()
+        if existing:
+            continue
+        connection.execute(
+            """
+            INSERT INTO users(username, display_name, role, password_hash, is_active, created_at)
+            VALUES (?, ?, ?, ?, 1, ?)
+            """,
+            (username, display_name, role, hash_password(password), now),
+        )
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    iterations = 120000
+    digest = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations
+    ).hex()
+    return f"pbkdf2_sha256${iterations}${salt}${digest}"
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        algorithm, iterations_text, salt, expected = password_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        iterations = int(iterations_text)
+    except (ValueError, TypeError):
+        return False
+    actual = hashlib.pbkdf2_hmac(
+        "sha256", password.encode("utf-8"), salt.encode("utf-8"), iterations
+    ).hex()
+    return hmac.compare_digest(actual, expected)
+
+
+def authenticate_user(
+    connection: sqlite3.Connection, username: str, password: str
+) -> Dict[str, Any] | None:
+    init_database(connection)
+    user = get_user_by_username(connection, username)
+    if user is None or not user.get("is_active"):
+        return None
+    if not verify_password(password, user["password_hash"]):
+        return None
+    return _public_user(user)
+
+
+def get_user_by_username(
+    connection: sqlite3.Connection, username: str
+) -> Dict[str, Any] | None:
+    init_database(connection)
+    row = connection.execute(
+        """
+        SELECT user_id, username, display_name, role, password_hash, is_active, created_at
+        FROM users
+        WHERE username = ?
+        """,
+        (username,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_user_by_id(connection: sqlite3.Connection, user_id: int | str) -> Dict[str, Any] | None:
+    init_database(connection)
+    row = connection.execute(
+        """
+        SELECT user_id, username, display_name, role, password_hash, is_active, created_at
+        FROM users
+        WHERE user_id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    return _public_user(dict(row)) if row else None
+
+
+def list_users(connection: sqlite3.Connection) -> List[Dict[str, Any]]:
+    init_database(connection)
+    rows = connection.execute(
+        """
+        SELECT user_id, username, display_name, role, is_active, created_at
+        FROM users
+        ORDER BY user_id
+        """
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def log_audit_event(
+    connection: sqlite3.Connection,
+    *,
+    username: str | None,
+    role: str | None,
+    action: str,
+    object_type: str | None = None,
+    object_id: str | None = None,
+    result: str = "成功",
+    failure_reason: str | None = None,
+) -> None:
+    init_database(connection)
+    connection.execute(
+        """
+        INSERT INTO audit_logs(
+            created_at, username, role, action, object_type, object_id, result, failure_reason
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            local_isoformat(timespec="seconds"),
+            username,
+            role,
+            action,
+            object_type,
+            object_id,
+            result,
+            failure_reason,
+        ),
+    )
+    connection.commit()
+
+
+def list_audit_logs(
+    connection: sqlite3.Connection,
+    *,
+    action: str = "",
+    user: str = "",
+    result: str = "",
+    date_from: str = "",
+    date_to: str = "",
+) -> List[Dict[str, Any]]:
+    init_database(connection)
+    rows = connection.execute(
+        """
+        SELECT log_id, created_at, username, role, action, object_type, object_id,
+               result, failure_reason
+        FROM audit_logs
+        ORDER BY log_id DESC
+        LIMIT 500
+        """
+    ).fetchall()
+    logs = [dict(row) for row in rows]
+    if action:
+        logs = [item for item in logs if item.get("action") == action]
+    if user:
+        needle = user.strip().lower()
+        logs = [
+            item
+            for item in logs
+            if needle in str(item.get("username") or "").lower()
+            or needle in str(item.get("role") or "").lower()
+        ]
+    if result:
+        logs = [item for item in logs if item.get("result") == result]
+    if date_from:
+        logs = [item for item in logs if str(item.get("created_at") or "") >= date_from]
+    if date_to:
+        logs = [item for item in logs if str(item.get("created_at") or "") <= date_to]
+    return logs
+
+
+def _public_user(user: Dict[str, Any]) -> Dict[str, Any]:
+    item = dict(user)
+    item.pop("password_hash", None)
+    item["is_active"] = bool(item.get("is_active"))
+    return item
 
 
 def import_workbook(

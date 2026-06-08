@@ -1,6 +1,6 @@
 # COPD LangGraph 智能辅助评估 POC
 
-这是一个慢阻肺病智能诊疗决策支持系统的 POC/MVP Demo。当前已经从第 3-4 周 POC 主流程，推进到第 7-8 周 MVP 模型层增强：
+这是一个慢阻肺病智能诊疗决策支持系统的 POC/MVP Demo。当前已经推进到第 11-12 周 MVP 验收交付阶段：
 
 ```text
 导入固定模板样例数据
@@ -12,13 +12,20 @@
 -> 可选调用通义千问 API
 -> 展示结构化评估结果
 -> 生成报告草稿
+-> 医生复核、编辑、确认或驳回
+-> 浏览器打印导出报告
+-> 操作日志和版本追溯
 ```
 
-当前仍然是 POC，不处理原始 CT、DICOM、PACS、HIS、EMR，也不输出具体用药或处置建议。
+当前仍然是单中心演示 MVP，不处理原始 CT、DICOM、PACS、HIS、EMR，也不输出具体用药或处置建议。
 
 ## 当前能力
 
 - 本地 FastAPI + SQLite + Jinja 页面 Demo。
+- 支持本地演示账号、登录退出和角色权限：
+  - 管理员：导入、删除、导入日志、操作日志、演示账号。
+  - 医生：查看患者、触发评估、复核、编辑、确认、驳回、导出报告。
+  - 科研人员：只读查看患者、时间轴、评估结果和报告状态。
 - 支持固定 Excel 模板导入：
   - `data/copd_patient_import_template.xlsx`
   - `data/copd_patient_import_sample_100.xlsx`
@@ -57,6 +64,8 @@
   - `safety_check`
   - `report_generator`
 - `key_evidence` 已增强为可追踪结构，包含 `source`、`source_dates`、`source_fields`。
+- 支持统一操作日志，记录登录、导入、删除、评估、报告编辑、确认、驳回和导出。
+- 管理员可查看系统配置状态，包括数据库路径、模板路径、Qwen 启用状态和 API Key 是否已配置；不会显示 API Key 明文。
 
 ## 安装依赖
 
@@ -104,10 +113,18 @@ python scripts\run_poc_server.py
 启动后访问：
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:8001
 ```
 
-系统不会自动读取任何默认位置的数据。启动后进入“导入”页面，手动上传固定模板 Excel。
+系统不会自动读取任何默认位置的数据。启动后先登录，再由管理员进入“导入”页面，手动上传固定模板 Excel。
+
+本地演示账号：
+
+| 角色 | 账号 | 密码 |
+| --- | --- | --- |
+| 管理员 | `admin` | `admin123` |
+| 医生 | `doctor` | `doctor123` |
+| 科研人员 | `researcher` | `researcher123` |
 
 推荐演示数据：
 
@@ -123,6 +140,8 @@ data\copd_patient_import_template.xlsx
 
 ## API
 
+- `GET /api/me`
+- `GET /api/audit-logs?action=&user=&result=&date_from=&date_to=`
 - `POST /api/import/patients`
 - `GET /api/imports`
 - `GET /api/imports/{batch_id}`
@@ -136,6 +155,8 @@ data\copd_patient_import_template.xlsx
 - `POST /api/reports/{report_id}/confirm`
 - `POST /api/reports/{report_id}/reject`
 
+说明：业务 API 需要先通过 `/login` 建立本地演示登录 Cookie；未登录返回 `401`，无权限返回 `403`。
+
 ## 医生复核与报告流程
 
 1. 在患者详情页触发“本地规则评估”或“API 智能评估”。
@@ -144,6 +165,13 @@ data\copd_patient_import_template.xlsx
 4. 在报告编辑页修改正文，每次保存都会生成新的报告版本。
 5. 已确认报告再次编辑后会回到 `待复核` 状态，避免直接覆盖已确认版本。
 6. 在报告导出页点击“打印 / 导出 PDF”，使用浏览器打印生成基础版慢阻肺智能辅助评估报告。
+
+## 交付文档
+
+- `docs/deployment_guide.md`：Windows 本地部署、SQLite、`.env` 和安全注意事项。
+- `docs/user_manual.md`：管理员、医生、科研人员的操作说明。
+- `docs/test_report.md`：验收测试项和当前自动化测试覆盖。
+- `docs/demo_script.md`：项目组验收演示脚本。
 
 ## 测试
 
@@ -164,4 +192,4 @@ python -m pytest -q
 - CT 只使用报告文本或已提取影像特征。
 - mNGS/病原学结果只作为感染相关线索。
 - 报告仅为辅助评估草稿，不能替代医生临床判断。
-- 当前已实现导入日志、模型调用日志、节点运行日志、医生复核日志和报告版本追踪；复杂权限系统仍留到后续 MVP 验收阶段。
+- 当前已实现基础权限、导入日志、操作日志、模型调用日志、节点运行日志、医生复核日志和报告版本追踪。

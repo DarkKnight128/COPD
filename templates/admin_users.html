@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>演示账号</h1>
+      <p class="muted">本页只展示本地 MVP 演示账号和角色，不展示密码哈希。</p>
+    </div>
+  </div>
+
+  <section class="panel">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>账号</th>
+          <th>显示名称</th>
+          <th>角色</th>
+          <th>状态</th>
+          <th>创建时间</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in users %}
+        <tr>
+          <td>{{ user.user_id }}</td>
+          <td>{{ user.username }}</td>
+          <td>{{ user.display_name }}</td>
+          <td>{{ user.role }}</td>
+          <td>{{ "启用" if user.is_active else "停用" }}</td>
+          <td>{{ user.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">暂无账号。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

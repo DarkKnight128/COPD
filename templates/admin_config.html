@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>系统配置</h1>
+      <p class="muted">仅展示验收演示需要的安全配置状态，不显示任何 API Key 明文。</p>
+    </div>
+  </div>
+
+  <section class="panel">
+    <h2>运行与数据</h2>
+    <table class="info-table">
+      <tbody>
+        <tr><th>SQLite 数据库</th><td>{{ config.database_path }}</td></tr>
+        <tr><th>官方导入模板</th><td>{{ config.template_path }}</td></tr>
+        <tr><th>100 例样例数据</th><td>{{ config.sample_data_path }}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>通义千问配置状态</h2>
+    <table class="info-table">
+      <tbody>
+        <tr><th>QWEN_ENABLE</th><td>{{ config.qwen_enable }}</td></tr>
+        <tr><th>QWEN_MODEL_NAME</th><td>{{ config.qwen_model_name }}</td></tr>
+        <tr><th>QWEN_BASE_URL</th><td>{{ config.qwen_base_url }}</td></tr>
+        <tr><th>QWEN_TIMEOUT_SECONDS</th><td>{{ config.qwen_timeout_seconds }}</td></tr>
+        <tr><th>DASHSCOPE_API_KEY</th><td>{{ config.dashscope_api_key_status }}</td></tr>
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

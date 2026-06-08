@@ -8,9 +8,13 @@
     </div>
     <div class="actions">
       {% if report_record %}
+      {% if current_user.role == "医生" %}
       <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
       <a class="button" href="/assessments/{{ assessment.assessment_id }}/review">提交复核</a>
+      {% endif %}
+      {% if current_user.role in ["管理员", "医生"] %}
       <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
+      {% endif %}
       {% endif %}
       <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
     </div>

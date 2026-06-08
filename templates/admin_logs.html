@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>操作日志</h1>
+      <p class="muted">记录登录、导入、删除、评估、报告编辑、复核和导出等关键操作。</p>
+    </div>
+  </div>
+
+  <form class="filter-bar patients-filter" method="get" action="/admin/logs">
+    <input name="user" value="{{ user }}" placeholder="按账号或角色检索">
+    <select name="action">
+      <option value="">全部动作</option>
+      {% for option in ["login", "logout", "import_patients", "delete_patient", "delete_patients", "run_assessment", "edit_report", "confirm_report", "reject_report", "export_report", "unauthorized_access", "forbidden_access"] %}
+      <option value="{{ option }}" {% if action == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <select name="result">
+      <option value="">全部结果</option>
+      {% for option in ["成功", "失败"] %}
+      <option value="{{ option }}" {% if result == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <input name="date_from" value="{{ date_from }}" placeholder="开始日期 YYYY-MM-DD">
+    <input name="date_to" value="{{ date_to }}" placeholder="结束日期 YYYY-MM-DD">
+    <button type="submit">筛选</button>
+  </form>
+
+  <section class="panel">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>用户</th>
+          <th>角色</th>
+          <th>动作</th>
+          <th>对象</th>
+          <th>结果</th>
+          <th>失败原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for log in logs %}
+        <tr>
+          <td>{{ log.created_at }}</td>
+          <td>{{ log.username or "-" }}</td>
+          <td>{{ log.role or "-" }}</td>
+          <td>{{ log.action }}</td>
+          <td>{{ log.object_type or "-" }}{% if log.object_id %}：{{ log.object_id }}{% endif %}</td>
+          <td><span class="badge status-{{ 'success' if log.result == '成功' else 'failed' }}">{{ log.result }}</span></td>
+          <td>{{ log.failure_reason or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="empty">暂无操作日志。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

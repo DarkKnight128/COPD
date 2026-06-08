@@ -8,7 +8,11 @@
     </div>
     <div class="actions">
       <button class="primary" type="button" onclick="window.print()">打印 / 导出 PDF</button>
+      {% if current_user.role == "医生" %}
       <a class="button" href="/reports/{{ report_record.report_id }}/edit">返回编辑</a>
+      {% else %}
+      <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
+      {% endif %}
     </div>
   </div>
 
@@ -64,7 +68,33 @@
     </section>
 
     <section class="report-section">
-      <h2>四、安全声明</h2>
+      <h2>四、版本追溯</h2>
+      <table class="report-table compact">
+        <thead>
+          <tr><th>节点</th><th>模型版本</th><th>输入数据版本</th><th>调用状态</th></tr>
+        </thead>
+        <tbody>
+          {% for log in model_logs %}
+          <tr>
+            <td>{{ log.node_name }}</td>
+            <td>{{ log.model_version or log.model_name or "-" }}</td>
+            <td>{{ log.input_data_version or "-" }}</td>
+            <td>{{ log.status }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4">暂无模型调用版本记录。</td></tr>
+          {% endfor %}
+          <tr>
+            <td>report</td>
+            <td colspan="2">报告版本 v{{ report_record.current_version }}</td>
+            <td>{{ report_record.report_status }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="report-section">
+      <h2>五、安全声明</h2>
       <p class="report-note">本报告为慢阻肺智能辅助评估报告，仅用于医生辅助参考；不替代医生临床判断，不作为独立诊疗依据，不提供具体治疗方案或处方建议。CT 信息仅来自报告或已提取影像特征，mNGS 仅作为感染相关线索。</p>
     </section>
   </article>

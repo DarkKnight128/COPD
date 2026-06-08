@@ -6,6 +6,7 @@
       <h1>患者总览：{{ patient.patient_id }}</h1>
       <p class="muted">核心信息、纵向病程档案、智能评估与报告复核入口。</p>
     </div>
+    {% if current_user.role in ["管理员", "医生"] %}
     <div class="assessment-actions">
       <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
         <input type="hidden" name="assessment_mode" value="local_rules">
@@ -16,6 +17,7 @@
         <button class="primary" type="submit">API 智能评估</button>
       </form>
     </div>
+    {% endif %}
   </div>
 
   <div class="grid">
@@ -54,8 +56,10 @@
   <div class="actions">
     <a class="button" href="/patients/{{ patient.patient_id }}/timeline">查看病程时间轴</a>
     <a class="button" href="/patients/{{ patient.patient_id }}/assessment">查看评估结果</a>
-    {% if latest_report %}
+    {% if latest_report and current_user.role == "医生" %}
     <a class="button" href="/reports/{{ latest_report.report_id }}/edit">编辑报告</a>
+    {% endif %}
+    {% if latest_report and current_user.role in ["管理员", "医生"] %}
     <a class="button" href="/reports/{{ latest_report.report_id }}/export">导出报告</a>
     {% endif %}
   </div>

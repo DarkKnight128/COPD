@@ -104,6 +104,13 @@ def demo_workbook():
     )
 
 
+def login(client: TestClient, username: str = "doctor", password: str = "doctor123"):
+    return client.post(
+        "/login",
+        data={"username": username, "password": password, "next": "/patients"},
+    )
+
+
 class PocFlowTest(unittest.TestCase):
     def setUp(self):
         with connect(TEST_DB_PATH) as connection:
@@ -160,6 +167,8 @@ class PocFlowTest(unittest.TestCase):
 
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
+        self.assertEqual(client.get("/patients", follow_redirects=False).status_code, 303)
+        login(client, "admin", "admin123")
 
         import_page = client.get("/import")
         self.assertEqual(import_page.status_code, 200)
@@ -189,6 +198,7 @@ class PocFlowTest(unittest.TestCase):
 
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
+        login(client)
 
         response = client.post("/api/patients/TEST-001/assessment?assessment_mode=local_rules")
         self.assertEqual(response.status_code, 200)
@@ -206,6 +216,7 @@ class PocFlowTest(unittest.TestCase):
         sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_100.xlsx"
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
+        login(client, "admin", "admin123")
         with sample_path.open("rb") as file:
             client.post(
                 "/api/import/patients",
@@ -235,6 +246,7 @@ class PocFlowTest(unittest.TestCase):
 
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
+        login(client)
 
         response = client.post("/api/patients/TEST-001/assessment?assessment_mode=local_rules")
         self.assertEqual(response.status_code, 200)
@@ -285,6 +297,7 @@ class PocFlowTest(unittest.TestCase):
         self.assertEqual(export_page.status_code, 200)
         self.assertIn("慢阻肺智能辅助评估报告", export_page.text)
         self.assertIn("医生复核意见", export_page.text)
+        self.assertIn("版本追溯", export_page.text)
 
     def test_api_imports_new_template_xlsx_upload(self):
         from copd_graph import web_app
@@ -294,6 +307,7 @@ class PocFlowTest(unittest.TestCase):
 
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
+        login(client, "admin", "admin123")
         with sample_path.open("rb") as file:
             response = client.post(
                 "/api/import/patients",
@@ -342,6 +356,7 @@ class PocFlowTest(unittest.TestCase):
         sample_path = PROJECT_ROOT / "data" / "copd_patient_import_sample_100.xlsx"
         web_app.DEFAULT_DB_PATH = TEST_DB_PATH
         client = TestClient(web_app.app)
+        login(client, "admin", "admin123")
         with sample_path.open("rb") as file:
             response = client.post(
                 "/api/import/patients",
@@ -366,6 +381,35 @@ class PocFlowTest(unittest.TestCase):
         self.assertGreater(filtered.json()["count"], 0)
         self.assertEqual(client.get("/imports").status_code, 200)
         self.assertEqual(client.get(f"/imports/{batch_id}").status_code, 200)
+
+    def test_role_permissions_and_audit_logs(self):
+        from copd_graph import web_app
+
+        web_app.DEFAULT_DB_PATH = TEST_DB_PATH
+
+        anonymous = TestClient(web_app.app)
+        self.assertEqual(anonymous.get("/api/patients").status_code, 401)
+
+        researcher = TestClient(web_app.app)
+        login(researcher, "researcher", "researcher123")
+        self.assertEqual(researcher.get("/api/patients").status_code, 200)
+        self.assertEqual(
+            researcher.post("/api/patients/TEST-001/assessment").status_code,
+            403,
+        )
+        self.assertEqual(researcher.get("/import").status_code, 403)
+
+        admin = TestClient(web_app.app)
+        login(admin, "admin", "admin123")
+        self.assertEqual(admin.get("/admin/users").status_code, 200)
+        config_page = admin.get("/admin/config")
+        self.assertEqual(config_page.status_code, 200)
+        self.assertIn("DASHSCOPE_API_KEY", config_page.text)
+        self.assertNotIn("sk-", config_page.text)
+        audit_response = admin.get("/api/audit-logs")
+        self.assertEqual(audit_response.status_code, 200)
+        self.assertGreaterEqual(audit_response.json()["count"], 1)
+        self.assertNotIn("DASHSCOPE_API_KEY", str(audit_response.json()))
 
     def test_template_import_validation_reports_errors(self):
         workbook = WorkbookData(

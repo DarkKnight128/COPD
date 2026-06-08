@@ -10,9 +10,22 @@
     <header class="topbar">
       <a class="brand" href="/patients">COPD POC</a>
       <nav>
+        {% if current_user %}
+        {% if current_user.role == "管理员" %}
         <a href="/import">导入</a>
         <a href="/imports">导入日志</a>
+        <a href="/admin/logs">操作日志</a>
+        <a href="/admin/users">演示账号</a>
+        <a href="/admin/config">系统配置</a>
+        {% endif %}
         <a href="/patients">患者列表</a>
+        <span class="user-chip">{{ current_user.display_name }} · {{ current_user.role }}</span>
+        <form class="nav-logout" method="post" action="/logout">
+          <button type="submit">退出</button>
+        </form>
+        {% else %}
+        <a href="/login">登录</a>
+        {% endif %}
       </nav>
     </header>
     <main class="page">
