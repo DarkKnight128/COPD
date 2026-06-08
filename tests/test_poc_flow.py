@@ -230,6 +230,62 @@ class PocFlowTest(unittest.TestCase):
         self.assertEqual(client.get("/api/patients?q=COPD-S002").json()["count"], 0)
         self.assertEqual(client.get("/api/patients?q=COPD-S003").json()["count"], 0)
 
+    def test_clinical_review_report_version_and_export_flow(self):
+        from copd_graph import web_app
+
+        web_app.DEFAULT_DB_PATH = TEST_DB_PATH
+        client = TestClient(web_app.app)
+
+        response = client.post("/api/patients/TEST-001/assessment?assessment_mode=local_rules")
+        self.assertEqual(response.status_code, 200)
+        assessment_id = response.json()["assessment_id"]
+
+        assessment_payload = client.get(f"/api/assessments/{assessment_id}").json()
+        report = assessment_payload["report"]
+        report_id = report["report_id"]
+        self.assertEqual(report["review_status"], "待复核")
+        self.assertEqual(report["current_version"], 1)
+
+        edit_response = client.post(
+            f"/reports/{report_id}/edit",
+            data={
+                "content": "编辑后的慢阻肺智能辅助评估报告。\n本报告不替代医生临床判断。",
+                "edited_by": "测试医生",
+                "change_summary": "补充复核后的报告正文",
+            },
+        )
+        self.assertEqual(edit_response.status_code, 200)
+        edited = client.get(f"/api/reports/{report_id}").json()
+        self.assertEqual(edited["current_version"], 2)
+        self.assertEqual(edited["report_status"], "待复核")
+        self.assertEqual(len(edited["versions"]), 2)
+
+        confirm_response = client.post(
+            f"/api/reports/{report_id}/confirm",
+            json={"reviewer_name": "测试医生", "review_comment": "确认可作为辅助评估报告。"},
+        )
+        self.assertEqual(confirm_response.status_code, 200)
+        self.assertEqual(confirm_response.json()["report_status"], "已确认")
+
+        empty_reject = client.post(
+            f"/api/reports/{report_id}/reject",
+            json={"reviewer_name": "测试医生", "review_comment": ""},
+        )
+        self.assertEqual(empty_reject.status_code, 400)
+
+        reject_response = client.post(
+            f"/api/reports/{report_id}/reject",
+            json={"reviewer_name": "测试医生", "review_comment": "需要补充关键证据说明。"},
+        )
+        self.assertEqual(reject_response.status_code, 200)
+        self.assertEqual(reject_response.json()["report_status"], "已驳回")
+        self.assertGreaterEqual(len(reject_response.json()["review_logs"]), 4)
+
+        export_page = client.get(f"/reports/{report_id}/export")
+        self.assertEqual(export_page.status_code, 200)
+        self.assertIn("慢阻肺智能辅助评估报告", export_page.text)
+        self.assertIn("医生复核意见", export_page.text)
+
     def test_api_imports_new_template_xlsx_upload(self):
         from copd_graph import web_app
 

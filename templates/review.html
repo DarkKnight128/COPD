@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section">
+  <div class="section-head">
+    <div>
+      <h1>医生复核：{{ assessment.patient_id }}</h1>
+      <p class="muted">确认、驳回或记录医生意见，形成临床反馈闭环。</p>
+    </div>
+    <div class="actions">
+      <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
+    </div>
+  </div>
+
+  <div class="table-grid">
+    <section class="panel">
+      <h2>评估摘要</h2>
+      <table class="info-table">
+        <tbody>
+          <tr><th>主要表型</th><td>{{ assessment.phenotype.main_phenotype }}</td></tr>
+          <tr><th>急性加重风险</th><td>{{ assessment.risk_assessment.acute_exacerbation_risk }}</td></tr>
+          <tr><th>再住院风险</th><td>{{ assessment.risk_assessment.readmission_risk }}</td></tr>
+          <tr><th>死亡风险</th><td>{{ assessment.risk_assessment.mortality_risk }}</td></tr>
+          <tr><th>安全检查</th><td>{{ "通过" if assessment.safety_check_result.passed else "需人工复核" }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="panel">
+      <h2>报告状态</h2>
+      <table class="info-table">
+        <tbody>
+          <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
+          <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
+          <tr><th>复核状态</th><td>{{ report_record.review_status }}</td></tr>
+          <tr><th>当前版本</th><td>v{{ report_record.current_version }}</td></tr>
+          <tr><th>医生意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>关键证据</h2>
+    <table class="data-table evidence-table">
+      <thead>
+        <tr><th>证据内容</th><th>来源</th><th>日期</th><th>原始数据</th></tr>
+      </thead>
+      <tbody>
+        {% for item in assessment.key_evidence %}
+        <tr>
+          <td>{{ item.evidence }}</td>
+          <td>{{ item.source }}</td>
+          <td>{{ item.source_dates | join("、") }}</td>
+          <td>{% if item.source == "timeline_events" %}<a href="/patients/{{ assessment.patient_id }}/timeline">查看时间轴</a>{% else %}<a href="/patients/{{ assessment.patient_id }}">查看总览</a>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">暂无关键证据。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>复核操作</h2>
+    <form class="review-form" method="post" action="/assessments/{{ assessment.assessment_id }}/review">
+      <label>
+        复核医生
+        <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
+      </label>
+      <label>
+        复核意见
+        <textarea name="review_comment" rows="5" placeholder="填写确认意见、修改说明或驳回原因。">{{ report_record.review_comment or "" }}</textarea>
+      </label>
+      <div class="actions">
+        <button name="action" value="save_comment" type="submit">保存意见</button>
+        <button class="primary" name="action" value="confirm" type="submit">确认结果</button>
+        <button class="danger" name="action" value="reject" type="submit" onclick="return confirm('驳回时必须填写原因，确认驳回？');">驳回结果</button>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

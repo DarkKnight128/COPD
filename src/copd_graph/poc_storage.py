@@ -181,6 +181,42 @@ def init_database(connection: sqlite3.Connection) -> None:
             status TEXT NOT NULL,
             error_message TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS reports (
+            report_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assessment_id TEXT NOT NULL UNIQUE,
+            patient_id TEXT NOT NULL,
+            report_status TEXT NOT NULL,
+            review_status TEXT NOT NULL,
+            current_version INTEGER NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            confirmed_at TEXT,
+            rejected_at TEXT,
+            reviewer_name TEXT,
+            review_comment TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS report_versions (
+            version_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            report_id INTEGER NOT NULL,
+            version_number INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            edited_by TEXT,
+            edited_at TEXT NOT NULL,
+            change_summary TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS review_logs (
+            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            assessment_id TEXT NOT NULL,
+            report_id INTEGER,
+            patient_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            reviewer_name TEXT,
+            review_comment TEXT,
+            created_at TEXT NOT NULL
+        );
         """
     )
     _ensure_column(connection, "patients", "import_batch_id", "INTEGER")
@@ -348,6 +384,8 @@ def list_patients(
     assessment_status: str = "",
     followup_status: str = "",
     import_batch_id: str | int = "",
+    review_status: str = "",
+    report_status: str = "",
 ) -> List[Dict[str, Any]]:
     init_database(connection)
     rows = connection.execute(
@@ -361,9 +399,16 @@ def list_patients(
             continue
         model_output = get_latest_model_output(connection, patient_id)
         latest_assessment = get_latest_assessment(connection, patient_id)
+        latest_report = (
+            get_report_by_assessment(connection, latest_assessment["assessment_id"])
+            if latest_assessment
+            else None
+        )
         risk_level = (model_output or {}).get("exacerbation_risk_level", "未评估")
         current_assessment_status = "已评估" if latest_assessment else "未评估"
         current_followup_status = _followup_status(patient)
+        current_review_status = (latest_report or {}).get("review_status", "未生成")
+        current_report_status = (latest_report or {}).get("report_status", "未生成")
         if risk and risk_level != risk:
             continue
         if assessment_status and current_assessment_status != assessment_status:
@@ -371,6 +416,10 @@ def list_patients(
         if followup_status and current_followup_status != followup_status:
             continue
         if import_batch_id and str(row["import_batch_id"] or "") != str(import_batch_id):
+            continue
+        if review_status and current_review_status != review_status:
+            continue
+        if report_status and current_report_status != report_status:
             continue
         patients.append(
             {
@@ -382,8 +431,11 @@ def list_patients(
                 "risk_level": risk_level,
                 "assessment_status": current_assessment_status,
                 "followup_status": current_followup_status,
+                "review_status": current_review_status,
+                "report_status": current_report_status,
                 "import_batch_id": row["import_batch_id"],
                 "latest_assessment_id": (latest_assessment or {}).get("assessment_id"),
+                "latest_report_id": (latest_report or {}).get("report_id"),
             }
         )
     return patients
@@ -400,15 +452,33 @@ def delete_patients(connection: sqlite3.Connection, patient_ids: Iterable[str]) 
             "labs": 0,
             "model_outputs": 0,
             "assessments": 0,
+            "reports": 0,
+            "report_versions": 0,
+            "review_logs": 0,
             "model_call_logs": 0,
             "graph_node_logs": 0,
         }
 
     counts = {"requested": len(ids)}
+    report_ids = []
+    for patient_id in ids:
+        report_rows = connection.execute(
+            "SELECT report_id FROM reports WHERE patient_id = ?", (patient_id,)
+        ).fetchall()
+        report_ids.extend([row["report_id"] for row in report_rows])
+    deleted_versions = 0
+    for report_id in report_ids:
+        cursor = connection.execute(
+            "DELETE FROM report_versions WHERE report_id = ?", (report_id,)
+        )
+        deleted_versions += cursor.rowcount if cursor.rowcount != -1 else 0
+    counts["report_versions"] = deleted_versions
     for table_name in [
         "visits",
         "labs",
         "model_outputs",
+        "review_logs",
+        "reports",
         "model_call_logs",
         "graph_node_logs",
         "assessments",
@@ -432,12 +502,19 @@ def get_patient_bundle(connection: sqlite3.Connection, patient_id: str) -> Dict[
     ).fetchone()
     if row is None:
         return None
+    latest_assessment = get_latest_assessment(connection, patient_id)
+    latest_report = (
+        get_report_by_assessment(connection, latest_assessment["assessment_id"])
+        if latest_assessment
+        else None
+    )
     return {
         "patient": json.loads(row["data_json"]),
         "visits": _load_many(connection, "visits", patient_id, "event_date"),
         "labs": _load_many(connection, "labs", patient_id, "sample_date"),
         "model_output": get_latest_model_output(connection, patient_id),
-        "latest_assessment": get_latest_assessment(connection, patient_id),
+        "latest_assessment": latest_assessment,
+        "latest_report": latest_report,
         "longitudinal_records": _longitudinal_records(connection, patient_id),
     }
 
@@ -532,6 +609,7 @@ def save_assessment(
     )
     _save_model_call_logs(connection, assessment_id, patient_id, created_at, result)
     _save_node_run_logs(connection, assessment_id, patient_id, result)
+    _ensure_report_for_assessment(connection, assessment_id, patient_id, result)
     connection.commit()
     return {"assessment_id": assessment_id, **result}
 
@@ -626,6 +704,235 @@ def get_assessment_node_logs(
         (assessment_id,),
     ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_report_by_assessment(
+    connection: sqlite3.Connection, assessment_id: str
+) -> Dict[str, Any] | None:
+    init_database(connection)
+    row = connection.execute(
+        """
+        SELECT report_id, assessment_id, patient_id, report_status, review_status,
+               current_version, created_at, updated_at, confirmed_at, rejected_at,
+               reviewer_name, review_comment
+        FROM reports
+        WHERE assessment_id = ?
+        """,
+        (assessment_id,),
+    ).fetchone()
+    return _report_from_row(connection, row) if row else None
+
+
+def get_report(connection: sqlite3.Connection, report_id: int | str) -> Dict[str, Any] | None:
+    init_database(connection)
+    row = connection.execute(
+        """
+        SELECT report_id, assessment_id, patient_id, report_status, review_status,
+               current_version, created_at, updated_at, confirmed_at, rejected_at,
+               reviewer_name, review_comment
+        FROM reports
+        WHERE report_id = ?
+        """,
+        (report_id,),
+    ).fetchone()
+    return _report_from_row(connection, row) if row else None
+
+
+def ensure_report_for_assessment(
+    connection: sqlite3.Connection, assessment_id: str
+) -> Dict[str, Any]:
+    init_database(connection)
+    assessment = get_assessment(connection, assessment_id)
+    if assessment is None:
+        raise KeyError(f"Unknown assessment_id: {assessment_id}")
+    report = _ensure_report_for_assessment(
+        connection,
+        assessment_id,
+        assessment["patient_id"],
+        assessment,
+    )
+    connection.commit()
+    return report
+
+
+def save_report_version(
+    connection: sqlite3.Connection,
+    report_id: int | str,
+    content: str,
+    edited_by: str = "",
+    change_summary: str = "",
+) -> Dict[str, Any]:
+    init_database(connection)
+    report = get_report(connection, report_id)
+    if report is None:
+        raise KeyError(f"Unknown report_id: {report_id}")
+    clean_content = (content or "").strip()
+    if not clean_content:
+        raise ValueError("报告内容不能为空")
+    now = local_isoformat(timespec="seconds")
+    next_version = int(report["current_version"]) + 1
+    connection.execute(
+        """
+        INSERT INTO report_versions(
+            report_id, version_number, content, edited_by, edited_at, change_summary
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            report_id,
+            next_version,
+            clean_content,
+            (edited_by or "医生").strip(),
+            now,
+            (change_summary or "医生编辑报告内容").strip(),
+        ),
+    )
+    connection.execute(
+        """
+        UPDATE reports
+        SET current_version = ?, updated_at = ?, report_status = ?, review_status = ?,
+            confirmed_at = NULL, rejected_at = NULL
+        WHERE report_id = ?
+        """,
+        (next_version, now, "待复核", "待复核", report_id),
+    )
+    _insert_review_log(
+        connection,
+        report["assessment_id"],
+        int(report_id),
+        report["patient_id"],
+        "edit",
+        edited_by or "医生",
+        change_summary or "医生编辑报告内容",
+        now,
+    )
+    connection.commit()
+    return get_report(connection, report_id) or {}
+
+
+def review_assessment(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    action: str,
+    reviewer_name: str = "",
+    review_comment: str = "",
+) -> Dict[str, Any]:
+    init_database(connection)
+    assessment = get_assessment(connection, assessment_id)
+    if assessment is None:
+        raise KeyError(f"Unknown assessment_id: {assessment_id}")
+    report = _ensure_report_for_assessment(
+        connection,
+        assessment_id,
+        assessment["patient_id"],
+        assessment,
+    )
+    if action == "confirm":
+        return confirm_report(connection, report["report_id"], reviewer_name, review_comment)
+    if action == "reject":
+        return reject_report(connection, report["report_id"], reviewer_name, review_comment)
+    if action == "save_comment":
+        now = local_isoformat(timespec="seconds")
+        connection.execute(
+            """
+            UPDATE reports
+            SET reviewer_name = ?, review_comment = ?, updated_at = ?
+            WHERE report_id = ?
+            """,
+            (
+                (reviewer_name or "医生").strip(),
+                (review_comment or "").strip(),
+                now,
+                report["report_id"],
+            ),
+        )
+        _insert_review_log(
+            connection,
+            assessment_id,
+            report["report_id"],
+            assessment["patient_id"],
+            "save_comment",
+            reviewer_name or "医生",
+            review_comment,
+            now,
+        )
+        connection.commit()
+        return get_report(connection, report["report_id"]) or {}
+    raise ValueError("Unsupported review action")
+
+
+def confirm_report(
+    connection: sqlite3.Connection,
+    report_id: int | str,
+    reviewer_name: str = "",
+    review_comment: str = "",
+) -> Dict[str, Any]:
+    init_database(connection)
+    report = get_report(connection, report_id)
+    if report is None:
+        raise KeyError(f"Unknown report_id: {report_id}")
+    now = local_isoformat(timespec="seconds")
+    reviewer = (reviewer_name or "医生").strip()
+    comment = (review_comment or "").strip()
+    connection.execute(
+        """
+        UPDATE reports
+        SET report_status = ?, review_status = ?, reviewer_name = ?, review_comment = ?,
+            confirmed_at = ?, rejected_at = NULL, updated_at = ?
+        WHERE report_id = ?
+        """,
+        ("已确认", "已确认", reviewer, comment, now, now, report_id),
+    )
+    _insert_review_log(
+        connection,
+        report["assessment_id"],
+        int(report_id),
+        report["patient_id"],
+        "confirm",
+        reviewer,
+        comment,
+        now,
+    )
+    connection.commit()
+    return get_report(connection, report_id) or {}
+
+
+def reject_report(
+    connection: sqlite3.Connection,
+    report_id: int | str,
+    reviewer_name: str = "",
+    review_comment: str = "",
+) -> Dict[str, Any]:
+    init_database(connection)
+    report = get_report(connection, report_id)
+    if report is None:
+        raise KeyError(f"Unknown report_id: {report_id}")
+    comment = (review_comment or "").strip()
+    if not comment:
+        raise ValueError("驳回报告必须填写原因")
+    now = local_isoformat(timespec="seconds")
+    reviewer = (reviewer_name or "医生").strip()
+    connection.execute(
+        """
+        UPDATE reports
+        SET report_status = ?, review_status = ?, reviewer_name = ?, review_comment = ?,
+            rejected_at = ?, confirmed_at = NULL, updated_at = ?
+        WHERE report_id = ?
+        """,
+        ("已驳回", "已驳回", reviewer, comment, now, now, report_id),
+    )
+    _insert_review_log(
+        connection,
+        report["assessment_id"],
+        int(report_id),
+        report["patient_id"],
+        "reject",
+        reviewer,
+        comment,
+        now,
+    )
+    connection.commit()
+    return get_report(connection, report_id) or {}
 
 
 def list_import_batches(connection: sqlite3.Connection) -> List[Dict[str, Any]]:
@@ -1266,6 +1573,162 @@ def _save_node_run_logs(
                 log.get("error_message", ""),
             ),
         )
+
+
+def _ensure_report_for_assessment(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    patient_id: str,
+    result: Dict[str, Any],
+) -> Dict[str, Any]:
+    existing = get_report_by_assessment(connection, assessment_id)
+    if existing:
+        return existing
+    now = local_isoformat(timespec="seconds")
+    content = (result.get("report_draft") or "").strip() or _structured_report_text(result)
+    cursor = connection.execute(
+        """
+        INSERT INTO reports(
+            assessment_id, patient_id, report_status, review_status, current_version,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (assessment_id, patient_id, "待复核", "待复核", 1, now, now),
+    )
+    report_id = int(cursor.lastrowid)
+    connection.execute(
+        """
+        INSERT INTO report_versions(
+            report_id, version_number, content, edited_by, edited_at, change_summary
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (report_id, 1, content, "系统", now, "由智能评估结果自动生成初始报告"),
+    )
+    _insert_review_log(
+        connection,
+        assessment_id,
+        report_id,
+        patient_id,
+        "create",
+        "系统",
+        "生成待复核报告",
+        now,
+    )
+    return get_report(connection, report_id) or {}
+
+
+def _report_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, Any]:
+    report = dict(row)
+    versions = _report_versions(connection, report["report_id"])
+    logs = _report_review_logs(connection, report["report_id"])
+    current = next(
+        (
+            version
+            for version in versions
+            if int(version["version_number"]) == int(report["current_version"])
+        ),
+        versions[-1] if versions else {},
+    )
+    report["versions"] = versions
+    report["review_logs"] = logs
+    report["current_content"] = current.get("content", "")
+    report["current_version_id"] = current.get("version_id")
+    return report
+
+
+def _report_versions(connection: sqlite3.Connection, report_id: int | str) -> List[Dict[str, Any]]:
+    rows = connection.execute(
+        """
+        SELECT version_id, report_id, version_number, content, edited_by, edited_at, change_summary
+        FROM report_versions
+        WHERE report_id = ?
+        ORDER BY version_number
+        """,
+        (report_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _report_review_logs(connection: sqlite3.Connection, report_id: int | str) -> List[Dict[str, Any]]:
+    rows = connection.execute(
+        """
+        SELECT log_id, assessment_id, report_id, patient_id, action, reviewer_name,
+               review_comment, created_at
+        FROM review_logs
+        WHERE report_id = ?
+        ORDER BY log_id
+        """,
+        (report_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def _insert_review_log(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    report_id: int | None,
+    patient_id: str,
+    action: str,
+    reviewer_name: str,
+    review_comment: str,
+    created_at: str,
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO review_logs(
+            assessment_id, report_id, patient_id, action, reviewer_name, review_comment, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            assessment_id,
+            report_id,
+            patient_id,
+            action,
+            reviewer_name,
+            review_comment,
+            created_at,
+        ),
+    )
+
+
+def _structured_report_text(result: Dict[str, Any]) -> str:
+    phenotype = result.get("phenotype", {})
+    risks = result.get("risk_assessment", {})
+    evidence = result.get("key_evidence", [])
+    evidence_lines = [
+        f"- {item.get('evidence', '')}（来源：{item.get('source', '')}）"
+        for item in evidence
+    ]
+    return "\n".join(
+        [
+            "# 慢阻肺智能辅助评估报告草稿",
+            "",
+            "## 病程摘要",
+            str(result.get("patient_timeline_summary", "")),
+            "",
+            "## 当前状态",
+            str(result.get("patient_current_summary", "")),
+            "",
+            "## 表型提示",
+            f"主要表型：{phenotype.get('main_phenotype', '')}",
+            f"相关标签：{'、'.join(phenotype.get('phenotype_tags', []))}",
+            f"依据说明：{phenotype.get('basis', '')}",
+            "",
+            "## 风险评估",
+            f"急性加重风险：{risks.get('acute_exacerbation_risk', '')}",
+            f"再住院风险：{risks.get('readmission_risk', '')}",
+            f"死亡风险：{risks.get('mortality_risk', '')}",
+            "",
+            "## 关键证据",
+            "\n".join(evidence_lines),
+            "",
+            "## 辅助评估免责声明",
+            "本报告仅作为辅助评估草稿，不替代医生临床判断，不作为独立诊疗依据，不提供具体治疗方案。",
+        ]
+    )
 
 
 def _data_version(payload: Dict[str, Any]) -> str:

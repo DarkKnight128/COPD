@@ -4,7 +4,7 @@
   <div class="section-head">
     <div>
       <h1>智能评估结果：{{ patient.patient_id }}</h1>
-      <p class="muted">展示数据质量、摘要、表型、风险、模型调用和关键证据。</p>
+      <p class="muted">展示数据质量、摘要、表型、风险、模型调用、关键证据和临床复核状态。</p>
     </div>
     <div class="assessment-actions">
       <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
@@ -19,6 +19,37 @@
   </div>
 
   {% if assessment %}
+  <section class="panel">
+    <h2>临床复核与报告状态</h2>
+    <table class="info-table">
+      <tbody>
+        <tr>
+          <th>复核状态</th>
+          <td>{{ report_record.review_status if report_record else "未生成" }}</td>
+        </tr>
+        <tr>
+          <th>报告状态</th>
+          <td>{{ report_record.report_status if report_record else "未生成" }}</td>
+        </tr>
+        <tr>
+          <th>报告版本</th>
+          <td>{% if report_record %}v{{ report_record.current_version }}{% else %}-{% endif %}</td>
+        </tr>
+        <tr>
+          <th>医生意见</th>
+          <td>{{ report_record.review_comment if report_record and report_record.review_comment else "-" }}</td>
+        </tr>
+      </tbody>
+    </table>
+    {% if report_record %}
+    <div class="actions compact-actions">
+      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/review">提交复核</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
+    </div>
+    {% endif %}
+  </section>
+
   <div class="table-grid">
     <section class="panel">
       <h2>数据质量</h2>
@@ -124,14 +155,8 @@
           <td>{{ log.model_version or "未配置" }}</td>
           <td>{{ log.input_data_version or "-" }}</td>
           <td>
-            <span class="badge status-{{ 'success' if log.status in ['success', 'reused'] else 'failed' }}">
-              {% if log.status == "success" %}
-                成功
-              {% elif log.status == "reused" %}
-                复用结果
-              {% else %}
-                {{ log.status }}
-              {% endif %}
+            <span class="badge status-{{ 'success' if log.status in ['success', 'reused', 'local_rules'] else 'failed' }}">
+              {% if log.status == "success" %}成功{% elif log.status == "reused" %}复用结果{% elif log.status == "local_rules" %}本地规则{% else %}{{ log.status }}{% endif %}
             </span>
           </td>
           <td>{{ log.failure_reason or "-" }}</td>
@@ -152,6 +177,7 @@
           <th>来源</th>
           <th>日期</th>
           <th>字段</th>
+          <th>原始数据</th>
         </tr>
       </thead>
       <tbody>
@@ -161,9 +187,16 @@
           <td>{{ item.source }}</td>
           <td>{{ item.source_dates | join("、") }}</td>
           <td>{{ item.source_fields | join("、") }}</td>
+          <td>
+            {% if item.source == "timeline_events" %}
+            <a href="/patients/{{ assessment.patient_id }}/timeline">查看时间轴</a>
+            {% else %}
+            <a href="/patients/{{ assessment.patient_id }}">查看总览</a>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
-        <tr><td colspan="4" class="empty">暂无关键证据。</td></tr>
+        <tr><td colspan="5" class="empty">暂无关键证据。</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -222,10 +255,6 @@
       </tbody>
     </table>
   </section>
-
-  <div class="actions">
-    <a class="button" href="/assessments/{{ assessment.assessment_id }}/report">查看报告草稿</a>
-  </div>
   {% else %}
   <div class="panel empty">该患者暂无评估结果，请先选择一种方式触发智能评估。</div>
   {% endif %}

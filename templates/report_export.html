@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section report-page">
+  <div class="section-head screen-only">
+    <div>
+      <h1>报告导出</h1>
+      <p class="muted">使用浏览器打印功能导出 PDF。</p>
+    </div>
+    <div class="actions">
+      <button class="primary" type="button" onclick="window.print()">打印 / 导出 PDF</button>
+      <a class="button" href="/reports/{{ report_record.report_id }}/edit">返回编辑</a>
+    </div>
+  </div>
+
+  <article class="print-report">
+    <header class="report-header">
+      <div>
+        <h1>慢阻肺智能辅助评估报告</h1>
+        <p>医生复核版</p>
+      </div>
+      <table class="report-meta">
+        <tbody>
+          <tr><th>患者ID</th><td>{{ assessment.patient_id }}</td></tr>
+          <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
+          <tr><th>报告版本</th><td>v{{ report_record.current_version }}</td></tr>
+          <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
+          <tr><th>复核医生</th><td>{{ report_record.reviewer_name or "-" }}</td></tr>
+          <tr><th>导出时间</th><td>{{ report_record.updated_at }}</td></tr>
+        </tbody>
+      </table>
+    </header>
+
+    <section class="report-section">
+      <h2>一、报告正文</h2>
+      <div class="report-content">{{ report_record.current_content }}</div>
+    </section>
+
+    <section class="report-section">
+      <h2>二、关键证据</h2>
+      <table class="report-table evidence-print-table">
+        <thead>
+          <tr><th>证据内容</th><th>来源</th><th>日期</th></tr>
+        </thead>
+        <tbody>
+          {% for item in assessment.key_evidence %}
+          <tr>
+            <td>{{ item.evidence }}</td>
+            <td>{{ item.source }}</td>
+            <td>{{ item.source_dates | join("、") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="report-section">
+      <h2>三、医生复核意见</h2>
+      <table class="report-table compact">
+        <tbody>
+          <tr><th>复核状态</th><td>{{ report_record.review_status }}</td></tr>
+          <tr><th>复核意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="report-section">
+      <h2>四、安全声明</h2>
+      <p class="report-note">本报告为慢阻肺智能辅助评估报告，仅用于医生辅助参考；不替代医生临床判断，不作为独立诊疗依据，不提供具体治疗方案或处方建议。CT 信息仅来自报告或已提取影像特征，mNGS 仅作为感染相关线索。</p>
+    </section>
+  </article>
+</section>
+{% endblock %}

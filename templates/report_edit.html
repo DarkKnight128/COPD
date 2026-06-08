@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="section report-edit-page">
+  <div class="section-head">
+    <div>
+      <h1>报告编辑：{{ assessment.patient_id }}</h1>
+      <p class="muted">每次保存都会生成新版本；已确认报告再次编辑后会回到待复核状态。</p>
+    </div>
+    <div class="actions">
+      <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
+    </div>
+  </div>
+
+  <section class="panel">
+    <h2>当前状态</h2>
+    <table class="info-table">
+      <tbody>
+        <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
+        <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
+        <tr><th>复核状态</th><td>{{ report_record.review_status }}</td></tr>
+        <tr><th>当前版本</th><td>v{{ report_record.current_version }}</td></tr>
+        <tr><th>医生意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel report-editor-panel">
+    <h2>编辑报告正文</h2>
+    <form class="report-editor" method="post" action="/reports/{{ report_record.report_id }}/edit">
+      <div class="editor-meta">
+        <label>
+          编辑人
+          <input name="edited_by" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
+        </label>
+        <label>
+          修改摘要
+          <input name="change_summary" placeholder="例如：补充医生复核意见">
+        </label>
+      </div>
+      <textarea class="report-body-editor" name="content">{{ report_record.current_content }}</textarea>
+      <div class="actions">
+        <button class="primary" type="submit">保存为新版本</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel review-decision-panel">
+    <h2>确认或驳回</h2>
+    <form class="review-decision-form" method="post" action="/reports/{{ report_record.report_id }}/confirm">
+      <label>
+        复核医生
+        <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
+      </label>
+      <label>
+        复核意见 / 驳回原因
+        <textarea class="review-comment-editor" name="review_comment" placeholder="确认报告时填写复核意见；驳回报告时这里必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
+      </label>
+      <div class="actions">
+        <button class="primary" type="submit">确认报告</button>
+        <button class="danger" type="submit" formaction="/reports/{{ report_record.report_id }}/reject" onclick="return confirm('驳回报告需要填写原因，确认驳回？');">驳回报告</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>版本记录</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>版本</th><th>编辑人</th><th>编辑时间</th><th>修改摘要</th></tr>
+      </thead>
+      <tbody>
+        {% for version in report_record.versions|reverse %}
+        <tr>
+          <td>v{{ version.version_number }}</td>
+          <td>{{ version.edited_by or "-" }}</td>
+          <td>{{ version.edited_at }}</td>
+          <td>{{ version.change_summary or "-" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="panel">
+    <h2>医生操作日志</h2>
+    <table class="data-table">
+      <thead>
+        <tr><th>时间</th><th>动作</th><th>操作人</th><th>意见</th></tr>
+      </thead>
+      <tbody>
+        {% for log in report_record.review_logs|reverse %}
+        <tr>
+          <td>{{ log.created_at }}</td>
+          <td>{{ log.action }}</td>
+          <td>{{ log.reviewer_name or "-" }}</td>
+          <td>{{ log.review_comment or "-" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">暂无操作日志。</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</section>
+{% endblock %}

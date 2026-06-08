@@ -740,3 +740,133 @@ pre {
     width: 100%;
   }
 }
+
+.compact-actions {
+  margin-top: 14px;
+}
+
+textarea {
+  border: 1px solid #c8d2d7;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.65;
+  padding: 10px 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.risk-高 {
+  background: #fdebea;
+  color: #a12d25;
+}
+
+.risk-中 {
+  background: #fff4d8;
+  color: #7a5600;
+}
+
+.risk-低 {
+  background: #e9f6ed;
+  color: #1f6b3a;
+}
+
+.risk-未评估 {
+  background: #eef2f4;
+  color: #52666f;
+}
+
+.report-content {
+  background: #fbfcfc;
+  border: 1px solid #dce4e7;
+  border-radius: 6px;
+  line-height: 1.85;
+  padding: 16px;
+  white-space: pre-wrap;
+}
+
+.report-note {
+  line-height: 1.8;
+}
+
+.report-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.report-editor textarea {
+  min-height: 420px;
+}
+
+.editor-meta {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.review-form {
+  display: grid;
+  gap: 12px;
+}
+
+.review-form label,
+.report-editor label {
+  color: #40545b;
+  display: grid;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 6px;
+}
+
+.review-actions-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 760px) {
+  .editor-meta,
+  .review-actions-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.report-edit-page {
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.report-editor-panel,
+.review-decision-panel {
+  padding: 22px;
+}
+
+.report-body-editor {
+  font-size: 16px;
+  line-height: 1.85;
+  min-height: 620px;
+  width: 100%;
+}
+
+.review-decision-form {
+  display: grid;
+  gap: 16px;
+}
+
+.review-decision-form label {
+  color: #40545b;
+  display: grid;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+.review-comment-editor {
+  font-size: 16px;
+  line-height: 1.8;
+  min-height: 150px;
+}
+
+.review-decision-form .actions {
+  justify-content: flex-start;
+}

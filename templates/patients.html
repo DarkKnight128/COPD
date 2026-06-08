@@ -4,7 +4,7 @@
   <div class="section-head patients-head">
     <div>
       <h1>患者列表</h1>
-      <p class="muted">展示已导入患者、风险等级和最近评估状态。</p>
+      <p class="muted">展示已导入患者、风险等级、评估状态、复核状态和报告状态。</p>
     </div>
   </div>
 
@@ -22,6 +22,18 @@
       <option value="{{ option }}" {% if assessment_status == option %}selected{% endif %}>{{ option }}</option>
       {% endfor %}
     </select>
+    <select name="review_status">
+      <option value="">全部复核状态</option>
+      {% for option in ["待复核", "已确认", "已驳回", "未生成"] %}
+      <option value="{{ option }}" {% if review_status == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
+    <select name="report_status">
+      <option value="">全部报告状态</option>
+      {% for option in ["待复核", "已确认", "已驳回", "未生成"] %}
+      <option value="{{ option }}" {% if report_status == option %}selected{% endif %}>{{ option }}</option>
+      {% endfor %}
+    </select>
     <select name="followup_status">
       <option value="">全部随访状态</option>
       {% for option in ["已随访", "未随访", "失访"] %}
@@ -37,7 +49,7 @@
     <button type="submit">筛选</button>
   </form>
 
-  <form method="post" action="/patients/delete" onsubmit="return confirm('确认删除选中的患者数据？该操作会同时删除关联时间轴、检验、模型输出和评估结果。');">
+  <form method="post" action="/patients/delete" onsubmit="return confirm('确认删除选中的患者数据？该操作会同时删除关联时间轴、检验、模型输出、评估结果、报告版本和复核日志。');">
     <div class="list-toolbar">
       <div class="list-toolbar-summary">
         当前结果：<strong>{{ patients|length }}</strong> 位患者
@@ -59,6 +71,8 @@
           <th>mMRC</th>
           <th>风险等级</th>
           <th>评估状态</th>
+          <th>复核状态</th>
+          <th>报告状态</th>
           <th>随访状态</th>
           <th>导入批次</th>
           <th>操作</th>
@@ -75,17 +89,25 @@
           <td>{{ patient.mmrc_score }}</td>
           <td><span class="badge risk-{{ patient.risk_level }}">{{ patient.risk_level }}</span></td>
           <td>{{ patient.assessment_status }}</td>
+          <td>{{ patient.review_status }}</td>
+          <td>{{ patient.report_status }}</td>
           <td>{{ patient.followup_status }}</td>
           <td>{% if patient.import_batch_id %}<a href="/imports/{{ patient.import_batch_id }}">#{{ patient.import_batch_id }}</a>{% else %}-{% endif %}</td>
           <td class="row-actions">
             <div class="action-links">
-              <a href="/patients/{{ patient.patient_id }}">查看详情</a>
+              <a href="/patients/{{ patient.patient_id }}">详情</a>
+              {% if patient.latest_assessment_id %}
+              <a href="/assessments/{{ patient.latest_assessment_id }}">评估</a>
+              {% endif %}
+              {% if patient.latest_report_id %}
+              <a href="/reports/{{ patient.latest_report_id }}/edit">报告</a>
+              {% endif %}
               <button class="link-danger" type="submit" formaction="/patients/{{ patient.patient_id }}/delete" onclick="return confirm('确认删除患者 {{ patient.patient_id }} 的全部数据？');">删除</button>
             </div>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="11" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
+        <tr><td colspan="13" class="empty">暂无患者数据，请先导入样例数据。</td></tr>
         {% endfor %}
       </tbody>
     </table>

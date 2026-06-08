@@ -126,12 +126,24 @@ data\copd_patient_import_template.xlsx
 - `POST /api/import/patients`
 - `GET /api/imports`
 - `GET /api/imports/{batch_id}`
-- `GET /api/patients?q=&risk=&assessment_status=&followup_status=&import_batch_id=`
+- `GET /api/patients?q=&risk=&assessment_status=&followup_status=&import_batch_id=&review_status=&report_status=`
 - `GET /api/patients/{patient_id}`
 - `GET /api/patients/{patient_id}/timeline`
 - `POST /api/patients/{patient_id}/assessment`
 - `GET /api/assessments/{assessment_id}`
 - `POST /api/assessments/{assessment_id}/report`
+- `GET /api/reports/{report_id}`
+- `POST /api/reports/{report_id}/confirm`
+- `POST /api/reports/{report_id}/reject`
+
+## 医生复核与报告流程
+
+1. 在患者详情页触发“本地规则评估”或“API 智能评估”。
+2. 系统保存评估结果后，会自动生成一份 `待复核` 报告版本。
+3. 在评估结果页点击“提交复核”，医生可以保存意见、确认结果或驳回结果。
+4. 在报告编辑页修改正文，每次保存都会生成新的报告版本。
+5. 已确认报告再次编辑后会回到 `待复核` 状态，避免直接覆盖已确认版本。
+6. 在报告导出页点击“打印 / 导出 PDF”，使用浏览器打印生成基础版慢阻肺智能辅助评估报告。
 
 ## 测试
 
@@ -152,4 +164,4 @@ python -m pytest -q
 - CT 只使用报告文本或已提取影像特征。
 - mNGS/病原学结果只作为感染相关线索。
 - 报告仅为辅助评估草稿，不能替代医生临床判断。
-- 当前已实现导入日志、模型调用日志和节点运行日志；医生复核、报告编辑确认、权限和报告版本管理仍留到后续 MVP 临床流程阶段。
+- 当前已实现导入日志、模型调用日志、节点运行日志、医生复核日志和报告版本追踪；复杂权限系统仍留到后续 MVP 验收阶段。

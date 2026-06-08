@@ -17,17 +17,24 @@ from copd_graph.poc_storage import (
     build_patient_state_data,
     connect,
     delete_patients,
+    ensure_report_for_assessment,
+    confirm_report,
     get_assessment,
     get_assessment_model_logs,
     get_assessment_node_logs,
     get_import_batch,
     get_latest_assessment,
     get_patient_bundle,
+    get_report,
+    get_report_by_assessment,
     import_workbook,
     init_database,
     list_import_batches,
     list_patients,
+    reject_report,
+    review_assessment,
     save_assessment,
+    save_report_version,
 )
 from copd_graph.time_utils import LOCAL_TIMEZONE
 from copd_graph.xlsx_importer import parse_xlsx_bytes
@@ -121,6 +128,8 @@ def patients_page(
     assessment_status: str = "",
     followup_status: str = "",
     import_batch_id: str = "",
+    review_status: str = "",
+    report_status: str = "",
 ) -> HTMLResponse:
     with connect(DEFAULT_DB_PATH) as connection:
         patients = list_patients(
@@ -130,6 +139,8 @@ def patients_page(
             assessment_status=assessment_status,
             followup_status=followup_status,
             import_batch_id=import_batch_id,
+            review_status=review_status,
+            report_status=report_status,
         )
         batches = list_import_batches(connection)
     return templates.TemplateResponse(
@@ -142,6 +153,8 @@ def patients_page(
             "assessment_status": assessment_status,
             "followup_status": followup_status,
             "import_batch_id": import_batch_id,
+            "review_status": review_status,
+            "report_status": report_status,
             "batches": batches,
         },
     )
@@ -211,6 +224,11 @@ def patient_assessment_page(request: Request, patient_id: str) -> HTMLResponse:
             if assessment
             else []
         )
+        report = (
+            ensure_report_for_assessment(connection, assessment["assessment_id"])
+            if assessment
+            else None
+        )
     if bundle is None:
         raise HTTPException(status_code=404, detail="Patient not found")
     return templates.TemplateResponse(
@@ -219,6 +237,7 @@ def patient_assessment_page(request: Request, patient_id: str) -> HTMLResponse:
         {
             "patient": bundle["patient"],
             "assessment": assessment,
+            "report_record": report,
             "model_logs": model_logs,
             "node_logs": format_node_logs(node_logs),
         },
@@ -231,6 +250,7 @@ def assessment_page(request: Request, assessment_id: str) -> HTMLResponse:
         assessment = get_assessment(connection, assessment_id)
         model_logs = get_assessment_model_logs(connection, assessment_id)
         node_logs = get_assessment_node_logs(connection, assessment_id)
+        report = ensure_report_for_assessment(connection, assessment_id) if assessment else None
     if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
     return templates.TemplateResponse(
@@ -239,6 +259,7 @@ def assessment_page(request: Request, assessment_id: str) -> HTMLResponse:
         {
             "patient": {"patient_id": assessment["patient_id"]},
             "assessment": assessment,
+            "report_record": report,
             "model_logs": model_logs,
             "node_logs": format_node_logs(node_logs),
         },
@@ -249,6 +270,7 @@ def assessment_page(request: Request, assessment_id: str) -> HTMLResponse:
 def report_page(request: Request, assessment_id: str) -> HTMLResponse:
     with connect(DEFAULT_DB_PATH) as connection:
         assessment = get_assessment(connection, assessment_id)
+        report = ensure_report_for_assessment(connection, assessment_id) if assessment else None
     if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
     return templates.TemplateResponse(
@@ -256,8 +278,137 @@ def report_page(request: Request, assessment_id: str) -> HTMLResponse:
         "report.html",
         {
             "assessment": assessment,
+            "report_record": report,
             "report": assessment.get("report_draft", ""),
         },
+    )
+
+
+@app.get("/assessments/{assessment_id}/review", response_class=HTMLResponse)
+def review_page(request: Request, assessment_id: str) -> HTMLResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        assessment = get_assessment(connection, assessment_id)
+        if assessment is None:
+            raise HTTPException(status_code=404, detail="Assessment not found")
+        report = ensure_report_for_assessment(connection, assessment_id)
+    return templates.TemplateResponse(
+        request,
+        "review.html",
+        {"assessment": assessment, "report_record": report},
+    )
+
+
+@app.post("/assessments/{assessment_id}/review")
+def submit_review(
+    assessment_id: str,
+    action: str = Form(...),
+    reviewer_name: str = Form(default=""),
+    review_comment: str = Form(default=""),
+) -> RedirectResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        try:
+            report = review_assessment(
+                connection,
+                assessment_id,
+                action,
+                reviewer_name=reviewer_name,
+                review_comment=review_comment,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
+
+
+@app.get("/reports/{report_id}/edit", response_class=HTMLResponse)
+def report_edit_page(request: Request, report_id: int) -> HTMLResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        report = get_report(connection, report_id)
+        assessment = get_assessment(connection, report["assessment_id"]) if report else None
+    if report is None or assessment is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return templates.TemplateResponse(
+        request,
+        "report_edit.html",
+        {"report_record": report, "assessment": assessment},
+    )
+
+
+@app.post("/reports/{report_id}/edit")
+def save_report_edit(
+    report_id: int,
+    content: str = Form(...),
+    edited_by: str = Form(default=""),
+    change_summary: str = Form(default=""),
+) -> RedirectResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        try:
+            report = save_report_version(
+                connection,
+                report_id,
+                content,
+                edited_by=edited_by,
+                change_summary=change_summary,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
+
+
+@app.post("/reports/{report_id}/confirm")
+def confirm_report_page(
+    report_id: int,
+    reviewer_name: str = Form(default=""),
+    review_comment: str = Form(default=""),
+) -> RedirectResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        try:
+            report = confirm_report(
+                connection,
+                report_id,
+                reviewer_name=reviewer_name,
+                review_comment=review_comment,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+    return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
+
+
+@app.post("/reports/{report_id}/reject")
+def reject_report_page(
+    report_id: int,
+    reviewer_name: str = Form(default=""),
+    review_comment: str = Form(default=""),
+) -> RedirectResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        try:
+            report = reject_report(
+                connection,
+                report_id,
+                reviewer_name=reviewer_name,
+                review_comment=review_comment,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+    return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
+
+
+@app.get("/reports/{report_id}/export", response_class=HTMLResponse)
+def report_export_page(request: Request, report_id: int) -> HTMLResponse:
+    with connect(DEFAULT_DB_PATH) as connection:
+        report = get_report(connection, report_id)
+        assessment = get_assessment(connection, report["assessment_id"]) if report else None
+    if report is None or assessment is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return templates.TemplateResponse(
+        request,
+        "report_export.html",
+        {"report_record": report, "assessment": assessment},
     )
 
 
@@ -296,6 +447,8 @@ def api_patients(
     assessment_status: str = "",
     followup_status: str = "",
     import_batch_id: str = "",
+    review_status: str = "",
+    report_status: str = "",
 ) -> Dict[str, Any]:
     with connect(DEFAULT_DB_PATH) as connection:
         patients = list_patients(
@@ -305,6 +458,8 @@ def api_patients(
             assessment_status=assessment_status,
             followup_status=followup_status,
             import_batch_id=import_batch_id,
+            review_status=review_status,
+            report_status=report_status,
         )
     return {"patients": patients, "count": len(patients)}
 
@@ -356,8 +511,10 @@ def api_assessment(assessment_id: str) -> Dict[str, Any]:
         assessment = get_assessment(connection, assessment_id)
         model_logs = get_assessment_model_logs(connection, assessment_id)
         node_logs = get_assessment_node_logs(connection, assessment_id)
+        report = ensure_report_for_assessment(connection, assessment_id) if assessment else None
     if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
+    assessment["report"] = report
     assessment["model_logs"] = model_logs
     assessment["node_logs"] = format_node_logs(node_logs)
     return assessment
@@ -367,13 +524,59 @@ def api_assessment(assessment_id: str) -> Dict[str, Any]:
 def api_report(assessment_id: str) -> Dict[str, Any]:
     with connect(DEFAULT_DB_PATH) as connection:
         assessment = get_assessment(connection, assessment_id)
+        report = ensure_report_for_assessment(connection, assessment_id) if assessment else None
     if assessment is None:
         raise HTTPException(status_code=404, detail="Assessment not found")
     return {
         "assessment_id": assessment_id,
         "patient_id": assessment["patient_id"],
-        "report_draft": assessment.get("report_draft", ""),
+        "report_id": report["report_id"],
+        "report_status": report["report_status"],
+        "review_status": report["review_status"],
+        "current_version": report["current_version"],
+        "report_draft": report.get("current_content") or assessment.get("report_draft", ""),
     }
+
+
+@app.get("/api/reports/{report_id}")
+def api_get_report(report_id: int) -> Dict[str, Any]:
+    with connect(DEFAULT_DB_PATH) as connection:
+        report = get_report(connection, report_id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return report
+
+
+@app.post("/api/reports/{report_id}/confirm")
+async def api_confirm_report(report_id: int, request: Request) -> Dict[str, Any]:
+    payload = await request.json()
+    with connect(DEFAULT_DB_PATH) as connection:
+        try:
+            return confirm_report(
+                connection,
+                report_id,
+                reviewer_name=payload.get("reviewer_name", ""),
+                review_comment=payload.get("review_comment", ""),
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+
+
+@app.post("/api/reports/{report_id}/reject")
+async def api_reject_report(report_id: int, request: Request) -> Dict[str, Any]:
+    payload = await request.json()
+    with connect(DEFAULT_DB_PATH) as connection:
+        try:
+            return reject_report(
+                connection,
+                report_id,
+                reviewer_name=payload.get("reviewer_name", ""),
+                review_comment=payload.get("review_comment", ""),
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 def run_patient_assessment(patient_id: str, assessment_mode: str = "api") -> Dict[str, Any]:
