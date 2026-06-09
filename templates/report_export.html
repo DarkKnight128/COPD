@@ -16,6 +16,10 @@
     </div>
   </div>
 
+  <div class="screen-only">
+    {% include "_workflow_steps.html" %}
+  </div>
+
   <article class="print-report">
     <header class="report-header">
       <div>
@@ -58,10 +62,10 @@
     </section>
 
     <section class="report-section">
-      <h2>三、医生复核意见</h2>
+      <h2>三、AI 评估复核与报告确认</h2>
       <table class="report-table compact">
         <tbody>
-          <tr><th>复核状态</th><td>{{ report_record.review_status }}</td></tr>
+          <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status }}</td></tr>
           <tr><th>复核意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
         </tbody>
       </table>

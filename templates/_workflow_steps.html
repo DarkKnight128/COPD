@@ -1,0 +1,17 @@
+{% if workflow_steps %}
+<nav class="workflow-steps" aria-label="临床流程进度">
+  {% for step in workflow_steps %}
+  {% if step.url %}
+  <a class="workflow-step {{ step.status }}" href="{{ step.url }}">
+    <span class="workflow-dot">{% if step.status == "done" %}✓{% else %}{{ loop.index }}{% endif %}</span>
+    <span>{{ step.label }}</span>
+  </a>
+  {% else %}
+  <span class="workflow-step {{ step.status }} disabled">
+    <span class="workflow-dot">{% if step.status == "done" %}✓{% else %}{{ loop.index }}{% endif %}</span>
+    <span>{{ step.label }}</span>
+  </span>
+  {% endif %}
+  {% endfor %}
+</nav>
+{% endif %}

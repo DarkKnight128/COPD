@@ -8,9 +8,12 @@
   </head>
   <body>
     <header class="topbar">
-      <a class="brand" href="/patients">COPD POC</a>
+      <a class="brand" href="{% if current_user and current_user.role == '医生' %}/dashboard{% else %}/patients{% endif %}">COPD POC</a>
       <nav>
         {% if current_user %}
+        {% if current_user.role == "医生" %}
+        <a href="/dashboard">工作台</a>
+        {% endif %}
         {% if current_user.role == "管理员" %}
         <a href="/import">导入</a>
         <a href="/imports">导入日志</a>
@@ -51,6 +54,24 @@
         };
         input.addEventListener("input", refreshButtons);
         refreshButtons();
+      });
+      document.querySelectorAll("form").forEach(function (form) {
+        var modeInput = form.querySelector("input[name='assessment_mode']");
+        if (!modeInput) {
+          return;
+        }
+        form.addEventListener("submit", function () {
+          var button = form.querySelector("button[type='submit'], button:not([type])");
+          if (!button) {
+            return;
+          }
+          var loadingText = modeInput.value === "local_rules" ? "规则评估生成中..." : "智能评估生成中...";
+          button.dataset.originalText = button.textContent;
+          button.textContent = loadingText;
+          button.classList.add("button-loading");
+          button.disabled = true;
+          form.classList.add("is-submitting");
+        });
       });
     </script>
   </body>

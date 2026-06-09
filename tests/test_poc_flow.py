@@ -196,16 +196,42 @@ class PocFlowTest(unittest.TestCase):
 
         detail_page = client.get("/patients/TEST-001")
         self.assertEqual(detail_page.status_code, 200)
-        self.assertIn("查看最近评估", detail_page.text)
+        self.assertIn("查看报告", detail_page.text)
         self.assertIn("查看报告", detail_page.text)
         self.assertIn("最近评估与报告摘要", detail_page.text)
         self.assertIn("报告摘要", detail_page.text)
-        self.assertIn("重新 API 智能评估", detail_page.text)
+        self.assertIn("生成智能评估", detail_page.text)
+        self.assertIn("临床流程进度", detail_page.text)
+        self.assertIn(f'href="/assessments/{assessment_id}"', detail_page.text)
 
         list_page = client.get("/patients")
         self.assertEqual(list_page.status_code, 200)
+        self.assertIn("任务筛选", list_page.text)
+        self.assertIn("下一步", list_page.text)
         self.assertIn(f"/assessments/{assessment_id}/report", list_page.text)
-        self.assertIn("导出", list_page.text)
+
+        doctor_client = TestClient(web_app.app)
+        login(doctor_client)
+        doctor_detail = doctor_client.get("/patients/TEST-001")
+        self.assertEqual(doctor_detail.status_code, 200)
+        self.assertIn("进入复核", doctor_detail.text)
+        self.assertIn(f'href="/assessments/{assessment_id}/review"', doctor_detail.text)
+        assessment_page = doctor_client.get(f"/assessments/{assessment_id}")
+        self.assertEqual(assessment_page.status_code, 200)
+        self.assertIn("重新生成评估", assessment_page.text)
+        self.assertIn(">重新生成智能评估<", assessment_page.text)
+        self.assertIn(">规则评估测试<", assessment_page.text)
+        self.assertIn("智能评估生成中...", assessment_page.text)
+        self.assertIn("button-loading", assessment_page.text)
+        self.assertIn(f'href="/reports/', assessment_page.text)
+        doctor_list = doctor_client.get("/patients")
+        self.assertEqual(doctor_list.status_code, 200)
+        self.assertIn("进入复核", doctor_list.text)
+
+        dashboard_page = doctor_client.get("/dashboard")
+        self.assertEqual(dashboard_page.status_code, 200)
+        self.assertIn("医生工作台", dashboard_page.text)
+        self.assertIn("今日优先处理", dashboard_page.text)
 
     def test_local_rule_assessment_mode_skips_qwen_api(self):
         from copd_graph import web_app
@@ -270,7 +296,15 @@ class PocFlowTest(unittest.TestCase):
         report = assessment_payload["report"]
         report_id = report["report_id"]
         self.assertEqual(report["review_status"], "待复核")
+        self.assertEqual(report["report_status"], "草稿")
         self.assertEqual(report["current_version"], 1)
+
+        blocked_confirm = client.post(
+            f"/api/reports/{report_id}/confirm",
+            json={"reviewer_name": "测试医生", "review_comment": "尚未复核 AI 评估。"},
+        )
+        self.assertEqual(blocked_confirm.status_code, 400)
+        self.assertIn("需先完成 AI 评估复核", blocked_confirm.text)
 
         edit_response = client.post(
             f"/reports/{report_id}/edit",
@@ -283,8 +317,27 @@ class PocFlowTest(unittest.TestCase):
         self.assertEqual(edit_response.status_code, 200)
         edited = client.get(f"/api/reports/{report_id}").json()
         self.assertEqual(edited["current_version"], 2)
-        self.assertEqual(edited["report_status"], "待复核")
+        self.assertEqual(edited["report_status"], "待确认")
+        self.assertEqual(edited["review_status"], "待复核")
         self.assertEqual(len(edited["versions"]), 2)
+
+        review_page = client.get(f"/assessments/{assessment_id}/review")
+        self.assertEqual(review_page.status_code, 200)
+        self.assertIn("AI 评估复核", review_page.text)
+        self.assertIn("复核 AI 智能评估结果是否可信", review_page.text)
+
+        approve_review = client.post(
+            f"/assessments/{assessment_id}/review",
+            data={
+                "action": "confirm",
+                "reviewer_name": "测试医生",
+                "review_comment": "AI 评估结果、证据和安全边界可接受。",
+            },
+        )
+        self.assertEqual(approve_review.status_code, 200)
+        approved = client.get(f"/api/reports/{report_id}").json()
+        self.assertEqual(approved["review_status"], "评估已通过")
+        self.assertEqual(approved["report_status"], "待确认")
 
         confirm_response = client.post(
             f"/api/reports/{report_id}/confirm",
@@ -292,6 +345,7 @@ class PocFlowTest(unittest.TestCase):
         )
         self.assertEqual(confirm_response.status_code, 200)
         self.assertEqual(confirm_response.json()["report_status"], "已确认")
+        self.assertEqual(confirm_response.json()["review_status"], "评估已通过")
 
         locked_page = client.get(f"/reports/{report_id}/edit")
         self.assertEqual(locked_page.status_code, 200)
@@ -312,7 +366,7 @@ class PocFlowTest(unittest.TestCase):
         self.assertEqual(unlocked_page.status_code, 200)
         self.assertIn("你正在修改已确认报告", unlocked_page.text)
         self.assertIn("require-review-comment", unlocked_page.text)
-        self.assertIn("disabled>确认报告", unlocked_page.text)
+        self.assertIn("disabled>确认并锁定报告", unlocked_page.text)
         self.assertIn("disabled formaction", unlocked_page.text)
 
         confirmed_edit = client.post(
@@ -327,7 +381,8 @@ class PocFlowTest(unittest.TestCase):
         self.assertEqual(confirmed_edit.status_code, 200)
         edited_after_confirm = client.get(f"/api/reports/{report_id}").json()
         self.assertEqual(edited_after_confirm["current_version"], 3)
-        self.assertEqual(edited_after_confirm["report_status"], "待复核")
+        self.assertEqual(edited_after_confirm["report_status"], "待确认")
+        self.assertEqual(edited_after_confirm["review_status"], "评估已通过")
 
         empty_reject_page = client.post(
             f"/reports/{report_id}/reject",
@@ -335,7 +390,7 @@ class PocFlowTest(unittest.TestCase):
         )
         self.assertEqual(empty_reject_page.status_code, 400)
         self.assertIn("驳回报告必须填写原因", empty_reject_page.text)
-        self.assertIn("确认或驳回", empty_reject_page.text)
+        self.assertIn("报告确认", empty_reject_page.text)
         self.assertNotIn('{"detail"', empty_reject_page.text)
 
         empty_reject = client.post(
@@ -350,12 +405,13 @@ class PocFlowTest(unittest.TestCase):
         )
         self.assertEqual(reject_response.status_code, 200)
         self.assertEqual(reject_response.json()["report_status"], "已驳回")
+        self.assertEqual(reject_response.json()["review_status"], "评估已通过")
         self.assertGreaterEqual(len(reject_response.json()["review_logs"]), 4)
 
         export_page = client.get(f"/reports/{report_id}/export")
         self.assertEqual(export_page.status_code, 200)
         self.assertIn("慢阻肺智能辅助评估报告", export_page.text)
-        self.assertIn("医生复核意见", export_page.text)
+        self.assertIn("AI 评估复核与报告确认", export_page.text)
         self.assertIn("版本追溯", export_page.text)
 
     def test_api_imports_new_template_xlsx_upload(self):
@@ -449,9 +505,19 @@ class PocFlowTest(unittest.TestCase):
         anonymous = TestClient(web_app.app)
         self.assertEqual(anonymous.get("/api/patients").status_code, 401)
 
+        doctor_login = TestClient(web_app.app)
+        login_response = doctor_login.post(
+            "/login",
+            data={"username": "doctor", "password": "doctor123", "next": "/patients"},
+            follow_redirects=False,
+        )
+        self.assertEqual(login_response.status_code, 303)
+        self.assertEqual(login_response.headers["location"], "/dashboard")
+
         researcher = TestClient(web_app.app)
         login(researcher, "researcher", "researcher123")
         self.assertEqual(researcher.get("/api/patients").status_code, 200)
+        self.assertEqual(researcher.get("/dashboard", follow_redirects=False).status_code, 303)
         self.assertEqual(
             researcher.post("/api/patients/TEST-001/assessment").status_code,
             403,

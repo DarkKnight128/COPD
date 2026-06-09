@@ -7,40 +7,50 @@
       <p class="muted">展示数据质量、摘要、表型、风险、模型调用、关键证据和临床复核状态。</p>
     </div>
     {% if current_user.role in ["管理员", "医生"] %}
-    <div class="assessment-actions">
+    <div class="workflow-primary-actions">
       {% if assessment %}
+      <a class="button primary" href="{{ next_action.url }}">{{ next_action.label }}</a>
       {% if report_record %}
-      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/report">查看报告</a>
+      <a class="button" href="/assessments/{{ assessment.assessment_id }}/report">查看报告</a>
       {% endif %}
-      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
-        <input type="hidden" name="assessment_mode" value="local_rules">
-        <button type="submit">重新本地规则评估</button>
-      </form>
-      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
-        <input type="hidden" name="assessment_mode" value="api">
-        <button type="submit">重新 API 智能评估</button>
-      </form>
       {% else %}
       <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
-        <input type="hidden" name="assessment_mode" value="local_rules">
-        <button type="submit">本地规则评估</button>
-      </form>
-      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
         <input type="hidden" name="assessment_mode" value="api">
-        <button class="primary" type="submit">API 智能评估</button>
+        <button class="primary" type="submit">生成智能评估</button>
       </form>
       {% endif %}
     </div>
     {% endif %}
   </div>
 
+  {% include "_workflow_steps.html" %}
+
+  {% if current_user.role in ["管理员", "医生"] %}
+  <section class="panel assessment-method-panel">
+    <div>
+      <h2>{{ "重新生成评估" if assessment else "选择评估方式" }}</h2>
+      <p class="muted">常规演示使用智能评估；规则评估测试用于无 API 或回归验证。</p>
+    </div>
+    <div class="assessment-method-actions">
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="api">
+        <button class="primary" type="submit">{{ "重新生成智能评估" if assessment else "生成智能评估" }}</button>
+      </form>
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="local_rules">
+        <button type="submit">规则评估测试</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
+
   {% if assessment %}
   <section class="panel">
-    <h2>临床复核与报告状态</h2>
+    <h2>AI 评估复核与报告状态</h2>
     <table class="info-table">
       <tbody>
         <tr>
-          <th>复核状态</th>
+          <th>AI 评估复核状态</th>
           <td>{{ report_record.review_status if report_record else "未生成" }}</td>
         </tr>
         <tr>
@@ -59,8 +69,8 @@
     </table>
     {% if report_record and current_user.role == "医生" %}
     <div class="actions compact-actions">
-      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/review">提交复核</a>
-      <a class="button" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
+      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/review">进入复核</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/edit">修改报告正文</a>
       <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
     </div>
     {% elif report_record and current_user.role == "管理员" %}

@@ -4,13 +4,13 @@
   <div class="section-head screen-only">
     <div>
       <h1>报告生成页</h1>
-      <p class="muted">当前报告版本用于医生复核、编辑、确认和导出。</p>
+      <p class="muted">当前页面展示报告正文；AI 评估复核与报告确认状态分开记录。</p>
     </div>
     <div class="actions">
       {% if report_record %}
       {% if current_user.role == "医生" %}
-      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
-      <a class="button" href="/assessments/{{ assessment.assessment_id }}/review">提交复核</a>
+      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">修改报告正文</a>
+      <a class="button" href="/assessments/{{ assessment.assessment_id }}/review">进入复核</a>
       {% endif %}
       {% if current_user.role in ["管理员", "医生"] %}
       <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
@@ -19,6 +19,8 @@
       <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
     </div>
   </div>
+
+  {% include "_workflow_steps.html" %}
 
   <article class="print-report">
     <header class="report-header">
@@ -43,10 +45,10 @@
     </section>
 
     <section class="report-section">
-      <h2>二、医生复核意见</h2>
+      <h2>二、AI 评估复核与报告确认</h2>
       <table class="report-table compact">
         <tbody>
-          <tr><th>复核状态</th><td>{{ report_record.review_status if report_record else "未生成" }}</td></tr>
+          <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status if report_record else "未生成" }}</td></tr>
           <tr><th>复核医生</th><td>{{ report_record.reviewer_name if report_record and report_record.reviewer_name else "-" }}</td></tr>
           <tr><th>复核意见</th><td>{{ report_record.review_comment if report_record and report_record.review_comment else "-" }}</td></tr>
         </tbody>

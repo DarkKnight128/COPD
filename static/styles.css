@@ -134,6 +134,14 @@ nav {
   padding-top: 6px;
 }
 
+.workflow-primary-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
 h1,
 h2,
 p {
@@ -193,6 +201,28 @@ h2 {
   padding: 14px;
 }
 
+.task-filter-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.task-filter-tabs a {
+  background: #ffffff;
+  border: 1px solid #c8d2d7;
+  border-radius: 999px;
+  color: #40545b;
+  font-size: 14px;
+  padding: 8px 12px;
+}
+
+.task-filter-tabs a.active {
+  background: #0b6b67;
+  border-color: #0b6b67;
+  color: #ffffff;
+  font-weight: 700;
+}
+
 .patients-filter select[name="import_batch_id"] {
   flex: 1 1 240px;
 }
@@ -241,6 +271,52 @@ select {
   align-items: center;
   display: flex;
   gap: 10px;
+}
+
+.task-cards {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.task-card {
+  background: #ffffff;
+  border: 1px solid #d9e0e3;
+  border-radius: 8px;
+  color: #182026;
+  display: grid;
+  gap: 8px;
+  min-height: 132px;
+  padding: 16px;
+}
+
+.task-card span {
+  color: #40545b;
+  font-weight: 700;
+}
+
+.task-card strong {
+  color: #0b6b67;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.task-card em {
+  color: #617079;
+  font-size: 13px;
+  font-style: normal;
+}
+
+.primary-task {
+  border-color: #0b6b67;
+}
+
+.warning-task {
+  border-color: #edcf83;
+}
+
+.danger-task {
+  border-color: #e5aaa2;
 }
 
 .upload-form {
@@ -292,11 +368,45 @@ button,
   padding: 9px 14px;
 }
 
+.table-primary-action {
+  font-size: 13px;
+  min-height: 34px;
+  padding: 7px 10px;
+  white-space: nowrap;
+}
+
 button:disabled {
   background: #edf0f2;
   border-color: #c8d2d7;
   color: #8a969d;
   cursor: not-allowed;
+}
+
+button.button-loading,
+button.button-loading:disabled {
+  background: #40545b;
+  border-color: #40545b;
+  color: #ffffff;
+  cursor: wait;
+  position: relative;
+}
+
+button.button-loading::before {
+  animation: spin 0.8s linear infinite;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-radius: 50%;
+  border-top-color: #ffffff;
+  content: "";
+  display: inline-block;
+  height: 14px;
+  margin-right: 8px;
+  width: 14px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .form-hint {
@@ -495,6 +605,133 @@ th {
 }
 
 .assessment-actions form {
+  margin: 0;
+}
+
+.more-actions {
+  position: relative;
+}
+
+.more-actions summary {
+  border: 1px solid #0b6b67;
+  border-radius: 6px;
+  color: #0b6b67;
+  cursor: pointer;
+  font-size: 14px;
+  list-style: none;
+  min-height: 38px;
+  padding: 9px 14px;
+}
+
+.more-actions summary::-webkit-details-marker {
+  display: none;
+}
+
+.more-actions > div {
+  background: #ffffff;
+  border: 1px solid #d9e0e3;
+  border-radius: 8px;
+  box-shadow: 0 10px 24px rgba(25, 39, 44, 0.12);
+  display: grid;
+  gap: 8px;
+  min-width: 190px;
+  padding: 10px;
+  position: absolute;
+  right: 0;
+  top: 44px;
+  z-index: 5;
+}
+
+.more-actions a,
+.more-actions button {
+  border: 0;
+  color: #0b6b67;
+  justify-content: flex-start;
+  min-height: auto;
+  padding: 7px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.workflow-steps {
+  background: #ffffff;
+  border: 1px solid #d9e0e3;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  padding: 12px;
+}
+
+.workflow-step {
+  align-items: center;
+  color: #617079;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  min-width: 0;
+}
+
+a.workflow-step {
+  border-radius: 6px;
+  padding: 6px;
+}
+
+a.workflow-step:hover {
+  background: #f1f6f6;
+}
+
+.workflow-step.disabled {
+  opacity: 0.55;
+}
+
+.workflow-dot {
+  align-items: center;
+  background: #eef2f4;
+  border-radius: 50%;
+  color: #617079;
+  display: inline-flex;
+  flex: 0 0 24px;
+  font-size: 12px;
+  font-weight: 700;
+  height: 24px;
+  justify-content: center;
+  width: 24px;
+}
+
+.workflow-step.done {
+  color: #1f6b3a;
+}
+
+.workflow-step.done .workflow-dot {
+  background: #e9f6ed;
+  color: #1f6b3a;
+}
+
+.workflow-step.current {
+  color: #0b6b67;
+  font-weight: 700;
+}
+
+.workflow-step.current .workflow-dot {
+  background: #0b6b67;
+  color: #ffffff;
+}
+
+.assessment-method-panel {
+  align-items: center;
+  display: flex;
+  gap: 18px;
+  justify-content: space-between;
+}
+
+.assessment-method-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.assessment-method-actions form {
   margin: 0;
 }
 
@@ -819,6 +1056,8 @@ pre {
 @media (max-width: 760px) {
   .grid,
   .table-grid,
+  .task-cards,
+  .workflow-steps,
   .timeline li {
     grid-template-columns: 1fr;
   }
@@ -844,10 +1083,41 @@ pre {
   }
 
   .page-actions .button,
+  .workflow-primary-actions .button,
   .list-toolbar-actions .button,
   .list-toolbar-actions button {
     flex: 1 1 0;
     justify-content: center;
+  }
+
+  .workflow-primary-actions {
+    justify-content: stretch;
+    width: 100%;
+  }
+
+  .assessment-method-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .assessment-method-actions {
+    width: 100%;
+  }
+
+  .assessment-method-actions form,
+  .assessment-method-actions button {
+    width: 100%;
+  }
+
+  .more-actions,
+  .more-actions summary {
+    width: 100%;
+  }
+
+  .more-actions > div {
+    left: 0;
+    right: auto;
+    width: 100%;
   }
 
   .report-header {

@@ -993,11 +993,11 @@ def save_report_version(
     connection.execute(
         """
         UPDATE reports
-        SET current_version = ?, updated_at = ?, report_status = ?, review_status = ?,
+        SET current_version = ?, updated_at = ?, report_status = ?,
             confirmed_at = NULL, rejected_at = NULL
         WHERE report_id = ?
         """,
-        (next_version, now, "待复核", "待复核", report_id),
+        (next_version, now, "待确认", report_id),
     )
     _insert_review_log(
         connection,
@@ -1031,9 +1031,13 @@ def review_assessment(
         assessment,
     )
     if action == "confirm":
-        return confirm_report(connection, report["report_id"], reviewer_name, review_comment)
+        return approve_assessment_review(
+            connection, assessment_id, reviewer_name, review_comment
+        )
     if action == "reject":
-        return reject_report(connection, report["report_id"], reviewer_name, review_comment)
+        return reject_assessment_review(
+            connection, assessment_id, reviewer_name, review_comment
+        )
     if action == "save_comment":
         now = local_isoformat(timespec="seconds")
         connection.execute(
@@ -1064,6 +1068,90 @@ def review_assessment(
     raise ValueError("Unsupported review action")
 
 
+def approve_assessment_review(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    reviewer_name: str = "",
+    review_comment: str = "",
+) -> Dict[str, Any]:
+    init_database(connection)
+    assessment = get_assessment(connection, assessment_id)
+    if assessment is None:
+        raise KeyError(f"Unknown assessment_id: {assessment_id}")
+    report = _ensure_report_for_assessment(
+        connection,
+        assessment_id,
+        assessment["patient_id"],
+        assessment,
+    )
+    now = local_isoformat(timespec="seconds")
+    reviewer = (reviewer_name or "医生").strip()
+    comment = (review_comment or "").strip()
+    connection.execute(
+        """
+        UPDATE reports
+        SET review_status = ?, reviewer_name = ?, review_comment = ?, updated_at = ?
+        WHERE report_id = ?
+        """,
+        ("评估已通过", reviewer, comment, now, report["report_id"]),
+    )
+    _insert_review_log(
+        connection,
+        assessment_id,
+        report["report_id"],
+        assessment["patient_id"],
+        "approve_assessment",
+        reviewer,
+        comment,
+        now,
+    )
+    connection.commit()
+    return get_report(connection, report["report_id"]) or {}
+
+
+def reject_assessment_review(
+    connection: sqlite3.Connection,
+    assessment_id: str,
+    reviewer_name: str = "",
+    review_comment: str = "",
+) -> Dict[str, Any]:
+    init_database(connection)
+    assessment = get_assessment(connection, assessment_id)
+    if assessment is None:
+        raise KeyError(f"Unknown assessment_id: {assessment_id}")
+    report = _ensure_report_for_assessment(
+        connection,
+        assessment_id,
+        assessment["patient_id"],
+        assessment,
+    )
+    comment = (review_comment or "").strip()
+    if not comment:
+        raise ValueError("驳回评估必须填写原因")
+    now = local_isoformat(timespec="seconds")
+    reviewer = (reviewer_name or "医生").strip()
+    connection.execute(
+        """
+        UPDATE reports
+        SET review_status = ?, reviewer_name = ?, review_comment = ?, updated_at = ?
+        WHERE report_id = ?
+        """,
+        ("评估已驳回", reviewer, comment, now, report["report_id"]),
+    )
+    _insert_review_log(
+        connection,
+        assessment_id,
+        report["report_id"],
+        assessment["patient_id"],
+        "reject_assessment",
+        reviewer,
+        comment,
+        now,
+    )
+    connection.commit()
+    return get_report(connection, report["report_id"]) or {}
+
+
 def confirm_report(
     connection: sqlite3.Connection,
     report_id: int | str,
@@ -1074,17 +1162,19 @@ def confirm_report(
     report = get_report(connection, report_id)
     if report is None:
         raise KeyError(f"Unknown report_id: {report_id}")
+    if report.get("review_status") != "评估已通过":
+        raise ValueError("需先完成 AI 评估复核并通过后，才能确认报告")
     now = local_isoformat(timespec="seconds")
     reviewer = (reviewer_name or "医生").strip()
     comment = (review_comment or "").strip()
     connection.execute(
         """
         UPDATE reports
-        SET report_status = ?, review_status = ?, reviewer_name = ?, review_comment = ?,
+        SET report_status = ?, reviewer_name = ?, review_comment = ?,
             confirmed_at = ?, rejected_at = NULL, updated_at = ?
         WHERE report_id = ?
         """,
-        ("已确认", "已确认", reviewer, comment, now, now, report_id),
+        ("已确认", reviewer, comment, now, now, report_id),
     )
     _insert_review_log(
         connection,
@@ -1118,11 +1208,11 @@ def reject_report(
     connection.execute(
         """
         UPDATE reports
-        SET report_status = ?, review_status = ?, reviewer_name = ?, review_comment = ?,
+        SET report_status = ?, reviewer_name = ?, review_comment = ?,
             rejected_at = ?, confirmed_at = NULL, updated_at = ?
         WHERE report_id = ?
         """,
-        ("已驳回", "已驳回", reviewer, comment, now, now, report_id),
+        ("已驳回", reviewer, comment, now, now, report_id),
     )
     _insert_review_log(
         connection,
@@ -1797,7 +1887,7 @@ def _ensure_report_for_assessment(
         )
         VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (assessment_id, patient_id, "待复核", "待复核", 1, now, now),
+        (assessment_id, patient_id, "草稿", "待复核", 1, now, now),
     )
     report_id = int(cursor.lastrowid)
     connection.execute(
@@ -1824,6 +1914,12 @@ def _ensure_report_for_assessment(
 
 def _report_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, Any]:
     report = dict(row)
+    if report.get("review_status") == "已确认":
+        report["review_status"] = "评估已通过"
+    elif report.get("review_status") == "已驳回":
+        report["review_status"] = "评估已驳回"
+    if report.get("report_status") == "待复核":
+        report["report_status"] = "待确认" if report.get("review_status") == "评估已通过" else "草稿"
     versions = _report_versions(connection, report["report_id"])
     logs = _report_review_logs(connection, report["report_id"])
     current = next(

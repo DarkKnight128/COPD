@@ -4,11 +4,21 @@
   <div class="section-head patients-head">
     <div>
       <h1>患者列表</h1>
-      <p class="muted">展示已导入患者、风险等级、评估状态、复核状态和报告状态。</p>
+      <p class="muted">按任务处理患者，默认优先显示需要医生处理的记录。</p>
     </div>
   </div>
 
+  <nav class="task-filter-tabs" aria-label="患者任务筛选">
+    <a class="{% if not task %}active{% endif %}" href="/patients?task=all">全部患者</a>
+    {% for key, label in task_labels.items() %}
+    <a class="{% if task == key %}active{% endif %}" href="/patients?task={{ key }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+
   <form class="filter-bar patients-filter" method="get" action="/patients">
+    {% if task %}
+    <input type="hidden" name="task" value="{{ task }}">
+    {% endif %}
     <input name="q" value="{{ q }}" placeholder="按患者 ID 检索">
     <select name="risk">
       <option value="">全部风险</option>
@@ -23,14 +33,14 @@
       {% endfor %}
     </select>
     <select name="review_status">
-      <option value="">全部复核状态</option>
-      {% for option in ["待复核", "已确认", "已驳回", "未生成"] %}
+      <option value="">全部 AI 评估复核状态</option>
+      {% for option in ["待复核", "评估已通过", "评估已驳回", "未生成"] %}
       <option value="{{ option }}" {% if review_status == option %}selected{% endif %}>{{ option }}</option>
       {% endfor %}
     </select>
     <select name="report_status">
       <option value="">全部报告状态</option>
-      {% for option in ["待复核", "已确认", "已驳回", "未生成"] %}
+      {% for option in ["草稿", "待确认", "已确认", "已驳回", "未生成"] %}
       <option value="{{ option }}" {% if report_status == option %}selected{% endif %}>{{ option }}</option>
       {% endfor %}
     </select>
@@ -75,11 +85,12 @@
           <th>mMRC</th>
           <th>风险等级</th>
           <th>评估状态</th>
-          <th>复核状态</th>
+          <th>AI 评估复核状态</th>
           <th>报告状态</th>
           <th>随访状态</th>
           <th>导入批次</th>
-          <th>操作</th>
+          <th>下一步</th>
+          <th>更多</th>
         </tr>
       </thead>
       <tbody>
@@ -99,6 +110,7 @@
           <td>{{ patient.report_status }}</td>
           <td>{{ patient.followup_status }}</td>
           <td>{% if patient.import_batch_id %}<a href="/imports/{{ patient.import_batch_id }}">#{{ patient.import_batch_id }}</a>{% else %}-{% endif %}</td>
+          <td><a class="button table-primary-action" href="{{ patient.next_url }}">{{ patient.next_label }}</a></td>
           <td class="row-actions">
             <div class="action-links">
               <a href="/patients/{{ patient.patient_id }}">详情</a>
@@ -121,7 +133,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="13" class="empty">暂无患者数据，请由管理员先导入样例数据。</td></tr>
+        <tr><td colspan="14" class="empty">暂无患者数据，请由管理员先导入样例数据。</td></tr>
         {% endfor %}
       </tbody>
     </table>

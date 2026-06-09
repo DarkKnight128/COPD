@@ -75,7 +75,7 @@ DOCTOR_ROLES = {"医生"}
 @app.middleware("http")
 async def prevent_stale_pages(request: Request, call_next):
     response = await call_next(request)
-    if request.url.path.startswith(("/patients", "/assessments", "/reports")):
+    if request.url.path.startswith(("/dashboard", "/patients", "/assessments", "/reports")):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
@@ -212,6 +212,248 @@ def format_node_logs(node_logs: list[Dict[str, Any]]) -> list[Dict[str, Any]]:
     return formatted
 
 
+TASK_LABELS = {
+    "todo": "需要处理",
+    "need_assessment": "待评估",
+    "need_review": "待复核",
+    "rejected": "已驳回",
+    "high_risk": "高风险",
+    "exportable": "已确认可导出",
+}
+
+
+def role_home(user: Dict[str, Any] | None) -> str:
+    if not user:
+        return "/patients"
+    if user.get("role") == "医生":
+        return "/dashboard"
+    return "/patients"
+
+
+def task_matches(patient: Dict[str, Any], task: str = "") -> bool:
+    if not task:
+        return True
+    assessment_status = patient.get("assessment_status", "")
+    review_status = patient.get("review_status", "")
+    report_status = patient.get("report_status", "")
+    risk_level = patient.get("risk_level", "")
+    if task == "need_assessment":
+        return assessment_status == "未评估"
+    if task == "need_review":
+        return review_status == "待复核"
+    if task == "rejected":
+        return report_status == "已驳回" or review_status == "评估已驳回"
+    if task == "high_risk":
+        return risk_level == "高"
+    if task == "exportable":
+        return report_status == "已确认"
+    if task == "todo":
+        return (
+            assessment_status == "未评估"
+            or review_status == "待复核"
+            or review_status == "评估已驳回"
+            or report_status == "待确认"
+            or (review_status == "评估已通过" and report_status == "草稿")
+            or report_status == "已驳回"
+            or risk_level == "高"
+        )
+    return True
+
+
+def enrich_patient_action(patient: Dict[str, Any], role: str = "医生") -> Dict[str, Any]:
+    item = dict(patient)
+    assessment_id = item.get("latest_assessment_id")
+    report_id = item.get("latest_report_id")
+    if item.get("assessment_status") == "未评估" and role in CLINICAL_ROLES:
+        item["next_label"] = "开始智能评估"
+        item["next_url"] = f"/patients/{item['patient_id']}"
+        item["next_kind"] = "primary"
+    elif item.get("assessment_status") == "未评估":
+        item["next_label"] = "查看详情"
+        item["next_url"] = f"/patients/{item['patient_id']}"
+        item["next_kind"] = "secondary"
+    elif item.get("review_status") == "评估已驳回" and assessment_id and role in CLINICAL_ROLES:
+        item["next_label"] = "重新生成评估"
+        item["next_url"] = f"/assessments/{assessment_id}"
+        item["next_kind"] = "warning"
+    elif item.get("report_status") == "已驳回" and report_id and role == "医生":
+        item["next_label"] = "修改报告"
+        item["next_url"] = f"/reports/{report_id}/edit"
+        item["next_kind"] = "warning"
+    elif item.get("review_status") == "待复核" and assessment_id and role == "医生":
+        item["next_label"] = "进入复核"
+        item["next_url"] = f"/assessments/{assessment_id}/review"
+        item["next_kind"] = "primary"
+    elif (
+        item.get("review_status") == "评估已通过"
+        and item.get("report_status") in {"草稿", "待确认"}
+        and report_id
+        and role == "医生"
+    ):
+        item["next_label"] = "确认报告正文"
+        item["next_url"] = f"/reports/{report_id}/edit"
+        item["next_kind"] = "primary"
+    elif item.get("report_status") == "已确认" and report_id and role in CLINICAL_ROLES:
+        item["next_label"] = "导出报告"
+        item["next_url"] = f"/reports/{report_id}/export"
+        item["next_kind"] = "primary"
+    elif report_id and assessment_id:
+        item["next_label"] = "查看报告"
+        item["next_url"] = f"/assessments/{assessment_id}/report"
+        item["next_kind"] = "secondary"
+    elif assessment_id:
+        item["next_label"] = "查看评估"
+        item["next_url"] = f"/assessments/{assessment_id}"
+        item["next_kind"] = "secondary"
+    else:
+        item["next_label"] = "查看详情"
+        item["next_url"] = f"/patients/{item['patient_id']}"
+        item["next_kind"] = "secondary"
+    return item
+
+
+def action_from_patient_state(
+    patient_id: str,
+    latest_assessment: Dict[str, Any] | None,
+    latest_report: Dict[str, Any] | None,
+    role: str = "医生",
+) -> Dict[str, str]:
+    if latest_assessment is None:
+        if role not in CLINICAL_ROLES:
+            return {
+                "label": "查看病程时间轴",
+                "url": f"/patients/{patient_id}/timeline",
+                "kind": "secondary",
+            }
+        return {
+            "label": "开始智能评估",
+            "url": f"/patients/{patient_id}/assessment",
+            "kind": "primary",
+        }
+    if latest_report and latest_report.get("review_status") == "评估已驳回" and role in CLINICAL_ROLES:
+        return {
+            "label": "重新生成评估",
+            "url": f"/assessments/{latest_assessment['assessment_id']}",
+            "kind": "warning",
+        }
+    if latest_report and latest_report.get("report_status") == "已驳回" and role == "医生":
+        return {
+            "label": "修改报告",
+            "url": f"/reports/{latest_report['report_id']}/edit",
+            "kind": "warning",
+        }
+    if latest_report and latest_report.get("review_status") == "待复核" and role == "医生":
+        return {
+            "label": "进入复核",
+            "url": f"/assessments/{latest_assessment['assessment_id']}/review",
+            "kind": "primary",
+        }
+    if (
+        latest_report
+        and latest_report.get("review_status") == "评估已通过"
+        and latest_report.get("report_status") in {"草稿", "待确认"}
+        and role == "医生"
+    ):
+        return {
+            "label": "确认报告正文",
+            "url": f"/reports/{latest_report['report_id']}/edit",
+            "kind": "primary",
+        }
+    if latest_report and latest_report.get("report_status") == "已确认" and role in CLINICAL_ROLES:
+        return {
+            "label": "导出报告",
+            "url": f"/reports/{latest_report['report_id']}/export",
+            "kind": "primary",
+        }
+    if latest_report:
+        return {
+            "label": "查看报告",
+            "url": f"/assessments/{latest_assessment['assessment_id']}/report",
+            "kind": "secondary",
+        }
+    return {
+        "label": "查看评估结果",
+        "url": f"/assessments/{latest_assessment['assessment_id']}",
+        "kind": "secondary",
+    }
+
+
+def filter_and_enrich_patients(
+    patients: list[Dict[str, Any]], task: str = "", role: str = "医生"
+) -> list[Dict[str, Any]]:
+    return [
+        enrich_patient_action(patient, role)
+        for patient in patients
+        if task_matches(patient, task)
+    ]
+
+
+def dashboard_counts(patients: list[Dict[str, Any]]) -> Dict[str, int]:
+    return {key: len(filter_and_enrich_patients(patients, key)) for key in TASK_LABELS}
+
+
+def workflow_steps(
+    patient_id: str,
+    latest_assessment: Dict[str, Any] | None,
+    latest_report: Dict[str, Any] | None,
+    current_step: str,
+    role: str = "医生",
+) -> list[Dict[str, Any]]:
+    report_status = (latest_report or {}).get("report_status", "")
+    review_status = (latest_report or {}).get("review_status", "")
+    assessment_id = (latest_assessment or {}).get("assessment_id")
+    report_id = (latest_report or {}).get("report_id")
+    completed = {
+        "import": True,
+        "patient": True,
+        "assessment": bool(latest_assessment),
+        "review": review_status in {"评估已通过", "评估已驳回"},
+        "confirm": report_status == "已确认",
+        "export": False,
+    }
+    labels = [
+        ("import", "数据导入", "/import" if role == "管理员" else "/patients?task=all"),
+        ("patient", "患者查看", f"/patients/{patient_id}"),
+        (
+            "assessment",
+            "智能评估",
+            f"/assessments/{assessment_id}" if assessment_id else f"/patients/{patient_id}/assessment",
+        ),
+        (
+            "review",
+            "医生复核",
+            f"/assessments/{assessment_id}/review"
+            if assessment_id and role == "医生"
+            else None,
+        ),
+        (
+            "confirm",
+            "报告确认",
+            f"/reports/{report_id}/edit"
+            if report_id and role == "医生" and review_status == "评估已通过"
+            else None,
+        ),
+        (
+            "export",
+            "导出",
+            f"/reports/{report_id}/export" if report_id and role in CLINICAL_ROLES else None,
+        ),
+    ]
+    return [
+        {
+            "key": key,
+            "label": label,
+            "url": url,
+            "status": "current"
+            if key == current_step
+            else "done"
+            if completed[key]
+            else "pending",
+        }
+        for key, label, url in labels
+    ]
+
+
 @app.get("/", response_class=HTMLResponse)
 def root() -> RedirectResponse:
     return RedirectResponse(url="/patients", status_code=303)
@@ -241,7 +483,8 @@ def login_submit(
             url=f"/login?next={quote(next or '/patients')}&error={quote('用户名或密码错误')}",
             status_code=303,
         )
-    response = RedirectResponse(url=next or "/patients", status_code=303)
+    target = next if next and next != "/patients" else role_home(user)
+    response = RedirectResponse(url=target, status_code=303)
     response.set_cookie(
         SESSION_COOKIE,
         sign_session(user["user_id"]),
@@ -390,10 +633,37 @@ def import_detail_page(request: Request, batch_id: int) -> Any:
     return render_template(request, "import_detail.html", {"batch": batch})
 
 
+@app.get("/dashboard", response_class=HTMLResponse)
+def dashboard_page(request: Request) -> Any:
+    current_user = require_page_role(request, VIEW_ROLES)
+    if isinstance(current_user, RedirectResponse):
+        return current_user
+    if current_user["role"] != "医生":
+        return RedirectResponse(url="/patients", status_code=303)
+    with connect(DEFAULT_DB_PATH) as connection:
+        all_patients = list_patients(connection)
+    patients = [enrich_patient_action(patient, current_user["role"]) for patient in all_patients]
+    todo_patients = filter_and_enrich_patients(all_patients, "todo", current_user["role"])[:8]
+    high_risk_patients = filter_and_enrich_patients(
+        all_patients, "high_risk", current_user["role"]
+    )[:6]
+    return render_template(
+        request,
+        "dashboard.html",
+        {
+            "counts": dashboard_counts(patients),
+            "todo_patients": todo_patients,
+            "high_risk_patients": high_risk_patients,
+            "task_labels": TASK_LABELS,
+        },
+    )
+
+
 @app.get("/patients", response_class=HTMLResponse)
 def patients_page(
     request: Request,
     q: str = "",
+    task: str = "",
     risk: str = "",
     assessment_status: str = "",
     followup_status: str = "",
@@ -416,12 +686,23 @@ def patients_page(
             report_status=report_status,
         )
         batches = list_import_batches(connection)
+    active_task = "" if task == "all" else task
+    if (
+        not active_task
+        and task != "all"
+        and current_user["role"] == "医生"
+        and not any([q, risk, assessment_status, followup_status, import_batch_id, review_status, report_status])
+    ):
+        active_task = "todo"
+    patients = filter_and_enrich_patients(patients, active_task, current_user["role"])
     return render_template(
         request,
         "patients.html",
         {
             "patients": patients,
             "q": q,
+            "task": active_task,
+            "task_labels": TASK_LABELS,
             "risk": risk,
             "assessment_status": assessment_status,
             "followup_status": followup_status,
@@ -478,6 +759,19 @@ def patient_detail_page(request: Request, patient_id: str) -> Any:
         bundle = get_patient_bundle(connection, patient_id)
     if bundle is None:
         raise HTTPException(status_code=404, detail="Patient not found")
+    bundle["workflow_steps"] = workflow_steps(
+        patient_id,
+        bundle.get("latest_assessment"),
+        bundle.get("latest_report"),
+        "patient",
+        current_user["role"],
+    )
+    bundle["next_action"] = action_from_patient_state(
+        patient_id,
+        bundle.get("latest_assessment"),
+        bundle.get("latest_report"),
+        current_user["role"],
+    )
     return render_template(request, "patient_detail.html", bundle)
 
 
@@ -565,6 +859,12 @@ def patient_assessment_page(request: Request, patient_id: str) -> Any:
             "report_record": report,
             "model_logs": model_logs,
             "node_logs": format_node_logs(node_logs),
+            "workflow_steps": workflow_steps(
+                patient_id, assessment, report, "assessment", current_user["role"]
+            ),
+            "next_action": action_from_patient_state(
+                patient_id, assessment, report, current_user["role"]
+            ),
         },
     )
 
@@ -590,6 +890,12 @@ def assessment_page(request: Request, assessment_id: str) -> Any:
             "report_record": report,
             "model_logs": model_logs,
             "node_logs": format_node_logs(node_logs),
+            "workflow_steps": workflow_steps(
+                assessment["patient_id"], assessment, report, "assessment", current_user["role"]
+            ),
+            "next_action": action_from_patient_state(
+                assessment["patient_id"], assessment, report, current_user["role"]
+            ),
         },
     )
 
@@ -611,6 +917,12 @@ def report_page(request: Request, assessment_id: str) -> Any:
             "assessment": assessment,
             "report_record": report,
             "report": assessment.get("report_draft", ""),
+            "workflow_steps": workflow_steps(
+                assessment["patient_id"], assessment, report, "confirm", current_user["role"]
+            ),
+            "next_action": action_from_patient_state(
+                assessment["patient_id"], assessment, report, current_user["role"]
+            ),
         },
     )
 
@@ -628,7 +940,13 @@ def review_page(request: Request, assessment_id: str) -> Any:
     return render_template(
         request,
         "review.html",
-        {"assessment": assessment, "report_record": report},
+        {
+            "assessment": assessment,
+            "report_record": report,
+            "workflow_steps": workflow_steps(
+                assessment["patient_id"], assessment, report, "review", current_user["role"]
+            ),
+        },
     )
 
 
@@ -679,7 +997,11 @@ def submit_review(
         object_type="assessment",
         object_id=assessment_id,
     )
-    return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
+    if action == "confirm":
+        return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
+    if action == "reject":
+        return RedirectResponse(url=f"/assessments/{assessment_id}", status_code=303)
+    return RedirectResponse(url=f"/assessments/{assessment_id}/review", status_code=303)
 
 
 @app.get("/reports/{report_id}/edit", response_class=HTMLResponse)
@@ -701,6 +1023,9 @@ def report_edit_page(request: Request, report_id: int, edit: str = "") -> Any:
             "assessment": assessment,
             "report_locked": report_locked,
             "edit_unlocked": edit == "1",
+            "workflow_steps": workflow_steps(
+                assessment["patient_id"], assessment, report, "confirm", current_user["role"]
+            ),
         },
     )
 
@@ -788,6 +1113,34 @@ def confirm_report_page(
                 failure_reason=str(error),
             )
             raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            record_audit(
+                current_user,
+                "confirm_report",
+                object_type="report",
+                object_id=str(report_id),
+                result="失败",
+                failure_reason=str(error),
+            )
+            report = get_report(connection, report_id)
+            assessment = get_assessment(connection, report["assessment_id"]) if report else None
+            if report is None or assessment is None:
+                raise HTTPException(status_code=404, detail="Report not found") from error
+            return render_template(
+                request,
+                "report_edit.html",
+                {
+                    "report_record": report,
+                    "assessment": assessment,
+                    "report_locked": False,
+                    "edit_unlocked": False,
+                    "error_message": str(error),
+                    "workflow_steps": workflow_steps(
+                        assessment["patient_id"], assessment, report, "confirm", current_user["role"]
+                    ),
+                },
+                status_code=400,
+            )
     record_audit(current_user, "confirm_report", object_type="report", object_id=str(report_id))
     return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
 
@@ -843,6 +1196,9 @@ def reject_report_page(
                     "report_locked": False,
                     "edit_unlocked": False,
                     "error_message": str(error),
+                    "workflow_steps": workflow_steps(
+                        assessment["patient_id"], assessment, report, "confirm", current_user["role"]
+                    ),
                 },
                 status_code=400,
             )
@@ -869,7 +1225,14 @@ def report_export_page(request: Request, report_id: int) -> Any:
     return render_template(
         request,
         "report_export.html",
-        {"report_record": report, "assessment": assessment, "model_logs": model_logs},
+        {
+            "report_record": report,
+            "assessment": assessment,
+            "model_logs": model_logs,
+            "workflow_steps": workflow_steps(
+                assessment["patient_id"], assessment, report, "export", current_user["role"]
+            ),
+        },
     )
 
 
@@ -930,6 +1293,7 @@ def api_import(request: Request, batch_id: int) -> Dict[str, Any]:
 def api_patients(
     request: Request,
     q: str = "",
+    task: str = "",
     risk: str = "",
     assessment_status: str = "",
     followup_status: str = "",
@@ -937,7 +1301,7 @@ def api_patients(
     review_status: str = "",
     report_status: str = "",
 ) -> Dict[str, Any]:
-    require_api_role(request, VIEW_ROLES)
+    current_user = require_api_role(request, VIEW_ROLES)
     with connect(DEFAULT_DB_PATH) as connection:
         patients = list_patients(
             connection,
@@ -949,6 +1313,7 @@ def api_patients(
             review_status=review_status,
             report_status=report_status,
         )
+    patients = filter_and_enrich_patients(patients, task, current_user["role"])
     return {"patients": patients, "count": len(patients)}
 
 
@@ -1093,6 +1458,16 @@ async def api_confirm_report(report_id: int, request: Request) -> Dict[str, Any]
                 failure_reason=str(error),
             )
             raise HTTPException(status_code=404, detail=str(error)) from error
+        except ValueError as error:
+            record_audit(
+                current_user,
+                "confirm_report",
+                object_type="report",
+                object_id=str(report_id),
+                result="失败",
+                failure_reason=str(error),
+            )
+            raise HTTPException(status_code=400, detail=str(error)) from error
     record_audit(current_user, "confirm_report", object_type="report", object_id=str(report_id))
     return report
 

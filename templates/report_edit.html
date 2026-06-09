@@ -3,8 +3,8 @@
 <section class="section report-edit-page">
   <div class="section-head">
     <div>
-      <h1>报告编辑：{{ assessment.patient_id }}</h1>
-      <p class="muted">每次保存都会生成新版本；已确认报告需要先点击“修改报告”才会进入编辑状态。</p>
+      <h1>修改报告正文：{{ assessment.patient_id }}</h1>
+      <p class="muted">这里确认的是医生认可后的报告正文；AI 评估复核需要先在复核页通过。</p>
     </div>
     <div class="actions">
       <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
@@ -12,13 +12,15 @@
     </div>
   </div>
 
+  {% include "_workflow_steps.html" %}
+
   <section class="panel">
     <h2>当前状态</h2>
     <table class="info-table">
       <tbody>
         <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
         <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
-        <tr><th>复核状态</th><td>{{ report_record.review_status }}</td></tr>
+        <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status }}</td></tr>
         <tr><th>当前版本</th><td>v{{ report_record.current_version }}</td></tr>
         <tr><th>医生意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
       </tbody>
@@ -29,7 +31,7 @@
     <h2>{{ "报告正文已锁定" if report_locked else "编辑报告正文" }}</h2>
     {% if report_locked %}
     <div class="locked-report-notice">
-      报告已确认。为避免误改，当前正文处于锁定状态；如需继续修改，请点击“修改报告”，保存后系统会生成新版本并将报告状态改回待复核。
+      报告已确认。为避免误改，当前正文处于锁定状态；如需继续修改，请点击“修改报告”，保存后系统会生成新版本并将报告状态改回待确认，AI 评估复核状态保持不变。
     </div>
     <div class="report-body-editor locked-report-body">{{ report_record.current_content }}</div>
     <div class="actions">
@@ -38,7 +40,7 @@
     {% else %}
     {% if edit_unlocked and report_record.report_status == "已确认" %}
     <div class="locked-report-notice warning">
-      你正在修改已确认报告。保存后会生成新版本，并回到待复核状态。
+      你正在修改已确认报告。保存后会生成新版本，并回到待确认状态。
     </div>
     {% endif %}
     <form class="report-editor" method="post" action="/reports/{{ report_record.report_id }}/edit">
@@ -52,7 +54,7 @@
         </label>
         <label>
           修改摘要
-          <input name="change_summary" placeholder="例如：补充医生复核意见">
+          <input name="change_summary" placeholder="例如：补充报告正文说明">
         </label>
       </div>
       <textarea class="report-body-editor" name="content">{{ report_record.current_content }}</textarea>
@@ -63,26 +65,37 @@
     {% endif %}
   </section>
 
-  {% if not report_locked %}
+  {% if not report_locked and report_record.review_status != "评估已通过" %}
   <section class="panel review-decision-panel">
-    <h2>确认或驳回</h2>
+    <h2>报告确认</h2>
+    {% if error_message %}
+    <div class="alert danger-alert">{{ error_message }}</div>
+    {% endif %}
+    <p class="muted">当前 AI 评估复核状态为“{{ report_record.review_status }}”。需先通过 AI 评估复核，才能确认或驳回报告正文。</p>
+    <div class="actions compact-actions">
+      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/review">进入 AI 评估复核</a>
+    </div>
+  </section>
+  {% elif not report_locked %}
+  <section class="panel review-decision-panel">
+    <h2>报告确认</h2>
     {% if error_message %}
     <div class="alert danger-alert">{{ error_message }}</div>
     {% endif %}
     <form class="review-decision-form require-review-comment" method="post" action="/reports/{{ report_record.report_id }}/confirm">
       <label>
-        复核医生
+        确认医生
         <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
       </label>
       <label>
-        复核意见 / 驳回原因
-        <textarea class="review-comment-editor required-review-comment" name="review_comment" required placeholder="确认报告时填写复核意见；驳回报告时这里必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
+        报告确认意见 / 驳回原因
+        <textarea class="review-comment-editor required-review-comment" name="review_comment" required placeholder="确认报告正文时填写意见；驳回报告时这里必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
       </label>
       <div class="actions">
-        <button class="primary requires-review-comment" type="submit" disabled>确认报告</button>
-        <button class="danger requires-review-comment" type="submit" disabled formaction="/reports/{{ report_record.report_id }}/reject" onclick="return confirm('驳回报告需要填写原因，确认驳回？');">驳回报告</button>
+        <button class="primary requires-review-comment" type="submit" disabled>确认并锁定报告</button>
+        <button class="danger requires-review-comment" type="submit" disabled formaction="/reports/{{ report_record.report_id }}/reject" onclick="return confirm('驳回报告需要填写原因，确认驳回？');">驳回报告并要求修改</button>
       </div>
-      <p class="form-hint">请先填写复核意见或驳回原因，才能确认或驳回报告。</p>
+      <p class="form-hint">确认报告前必须先通过 AI 评估复核；确认后当前报告版本会锁定。</p>
     </form>
   </section>
   {% else %}

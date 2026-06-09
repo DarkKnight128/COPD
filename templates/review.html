@@ -3,14 +3,16 @@
 <section class="section">
   <div class="section-head">
     <div>
-      <h1>医生复核：{{ assessment.patient_id }}</h1>
-      <p class="muted">确认、驳回或记录医生意见，形成临床反馈闭环。</p>
+      <h1>AI 评估复核：{{ assessment.patient_id }}</h1>
+      <p class="muted">复核 AI 智能评估结果是否可信，包括表型、风险、关键证据、数据质量、安全边界和模型调用状态。</p>
     </div>
     <div class="actions">
       <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
-      <a class="button" href="/reports/{{ report_record.report_id }}/edit">编辑报告</a>
+      <a class="button" href="/reports/{{ report_record.report_id }}/edit">修改报告正文</a>
     </div>
   </div>
+
+  {% include "_workflow_steps.html" %}
 
   <div class="table-grid">
     <section class="panel">
@@ -27,12 +29,12 @@
     </section>
 
     <section class="panel">
-      <h2>报告状态</h2>
+      <h2>复核与报告状态</h2>
       <table class="info-table">
         <tbody>
           <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
           <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
-          <tr><th>复核状态</th><td>{{ report_record.review_status }}</td></tr>
+          <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status }}</td></tr>
           <tr><th>当前版本</th><td>v{{ report_record.current_version }}</td></tr>
           <tr><th>医生意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
         </tbody>
@@ -62,22 +64,22 @@
   </section>
 
   <section class="panel">
-    <h2>复核操作</h2>
+    <h2>AI 评估复核操作</h2>
     <form class="review-form require-review-comment" method="post" action="/assessments/{{ assessment.assessment_id }}/review">
       <label>
         复核医生
         <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
       </label>
       <label>
-        复核意见
-        <textarea class="required-review-comment" name="review_comment" rows="5" required placeholder="填写确认意见、修改说明或驳回原因。">{{ report_record.review_comment or "" }}</textarea>
+        评估复核意见
+        <textarea class="required-review-comment" name="review_comment" rows="5" required placeholder="说明 AI 评估结果是否可信；驳回评估时必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
       </label>
       <div class="actions">
         <button name="action" value="save_comment" type="submit">保存意见</button>
-        <button class="primary requires-review-comment" name="action" value="confirm" type="submit" disabled>确认结果</button>
-        <button class="danger requires-review-comment" name="action" value="reject" type="submit" disabled onclick="return confirm('驳回时必须填写原因，确认驳回？');">驳回结果</button>
+        <button class="primary requires-review-comment" name="action" value="confirm" type="submit" disabled>通过评估</button>
+        <button class="danger requires-review-comment" name="action" value="reject" type="submit" disabled onclick="return confirm('驳回 AI 评估时必须填写原因，确认驳回？');">驳回评估</button>
       </div>
-      <p class="form-hint">请先填写复核意见或驳回原因，才能确认或驳回结果。</p>
+      <p class="form-hint">医生复核的是 AI 评估结果，不是最终报告正文；报告确认在“修改报告正文”页面完成。</p>
     </form>
   </section>
 </section>
