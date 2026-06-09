@@ -32,15 +32,9 @@
       <option value="{{ option }}" {% if assessment_status == option %}selected{% endif %}>{{ option }}</option>
       {% endfor %}
     </select>
-    <select name="review_status">
-      <option value="">全部 AI 评估复核状态</option>
-      {% for option in ["待复核", "评估已通过", "评估已驳回", "未生成"] %}
-      <option value="{{ option }}" {% if review_status == option %}selected{% endif %}>{{ option }}</option>
-      {% endfor %}
-    </select>
     <select name="report_status">
       <option value="">全部报告状态</option>
-      {% for option in ["草稿", "待确认", "已确认", "已驳回", "未生成"] %}
+      {% for option in ["草稿", "待确认", "已确认", "未生成"] %}
       <option value="{{ option }}" {% if report_status == option %}selected{% endif %}>{{ option }}</option>
       {% endfor %}
     </select>
@@ -85,7 +79,6 @@
           <th>mMRC</th>
           <th>风险等级</th>
           <th>评估状态</th>
-          <th>AI 评估复核状态</th>
           <th>报告状态</th>
           <th>随访状态</th>
           <th>导入批次</th>
@@ -106,7 +99,6 @@
           <td>{{ patient.mmrc_score }}</td>
           <td><span class="badge risk-{{ patient.risk_level }}">{{ patient.risk_level }}</span></td>
           <td>{{ patient.assessment_status }}</td>
-          <td>{{ patient.review_status }}</td>
           <td>{{ patient.report_status }}</td>
           <td>{{ patient.followup_status }}</td>
           <td>{% if patient.import_batch_id %}<a href="/imports/{{ patient.import_batch_id }}">#{{ patient.import_batch_id }}</a>{% else %}-{% endif %}</td>
@@ -133,7 +125,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="14" class="empty">暂无患者数据，请由管理员先导入样例数据。</td></tr>
+        <tr><td colspan="13" class="empty">暂无患者数据，请由管理员先导入样例数据。</td></tr>
         {% endfor %}
       </tbody>
     </table>

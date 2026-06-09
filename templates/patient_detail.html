@@ -98,7 +98,6 @@
       <table class="info-table">
         <tbody>
           <tr><th>报告状态</th><td>{{ latest_report.report_status if latest_report else "未生成" }}</td></tr>
-          <tr><th>AI 评估复核状态</th><td>{{ latest_report.review_status if latest_report else "未生成" }}</td></tr>
           <tr><th>报告版本</th><td>{% if latest_report %}v{{ latest_report.current_version }}{% else %}-{% endif %}</td></tr>
           <tr><th>医生意见</th><td>{{ latest_report.review_comment if latest_report and latest_report.review_comment else "-" }}</td></tr>
         </tbody>
@@ -114,7 +113,7 @@
 
     <div class="actions compact-actions">
       {% if latest_report and current_user.role == "医生" %}
-      <a class="button" href="/reports/{{ latest_report.report_id }}/edit">修改报告正文</a>
+      <a class="button" href="/reports/{{ latest_report.report_id }}/edit">复核报告</a>
       {% endif %}
       {% if latest_report and current_user.role in ["管理员", "医生"] %}
       <a class="button" href="/reports/{{ latest_report.report_id }}/export">导出报告</a>

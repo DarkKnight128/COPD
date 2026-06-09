@@ -3,84 +3,26 @@
 <section class="section">
   <div class="section-head">
     <div>
-      <h1>AI 评估复核：{{ assessment.patient_id }}</h1>
-      <p class="muted">复核 AI 智能评估结果是否可信，包括表型、风险、关键证据、数据质量、安全边界和模型调用状态。</p>
+      <h1>医生报告复核：{{ assessment.patient_id }}</h1>
+      <p class="muted">复核流程已经合并到报告正文编辑页，医生直接修改报告并确认锁定。</p>
     </div>
     <div class="actions">
-      <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
-      <a class="button" href="/reports/{{ report_record.report_id }}/edit">修改报告正文</a>
+      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">进入报告复核</a>
+      <a class="button" href="/assessments/{{ assessment.assessment_id }}">查看智能评估</a>
     </div>
   </div>
 
   {% include "_workflow_steps.html" %}
 
-  <div class="table-grid">
-    <section class="panel">
-      <h2>评估摘要</h2>
-      <table class="info-table">
-        <tbody>
-          <tr><th>主要表型</th><td>{{ assessment.phenotype.main_phenotype }}</td></tr>
-          <tr><th>急性加重风险</th><td>{{ assessment.risk_assessment.acute_exacerbation_risk }}</td></tr>
-          <tr><th>再住院风险</th><td>{{ assessment.risk_assessment.readmission_risk }}</td></tr>
-          <tr><th>死亡风险</th><td>{{ assessment.risk_assessment.mortality_risk }}</td></tr>
-          <tr><th>安全检查</th><td>{{ "通过" if assessment.safety_check_result.passed else "需人工复核" }}</td></tr>
-        </tbody>
-      </table>
-    </section>
-
-    <section class="panel">
-      <h2>复核与报告状态</h2>
-      <table class="info-table">
-        <tbody>
-          <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
-          <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
-          <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status }}</td></tr>
-          <tr><th>当前版本</th><td>v{{ report_record.current_version }}</td></tr>
-          <tr><th>医生意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
-        </tbody>
-      </table>
-    </section>
-  </div>
-
   <section class="panel">
-    <h2>关键证据</h2>
-    <table class="data-table evidence-table">
-      <thead>
-        <tr><th>证据内容</th><th>来源</th><th>日期</th><th>原始数据</th></tr>
-      </thead>
+    <h2>当前状态</h2>
+    <table class="info-table">
       <tbody>
-        {% for item in assessment.key_evidence %}
-        <tr>
-          <td>{{ item.evidence }}</td>
-          <td>{{ item.source }}</td>
-          <td>{{ item.source_dates | join("、") }}</td>
-          <td>{% if item.source == "timeline_events" %}<a href="/patients/{{ assessment.patient_id }}/timeline">查看时间轴</a>{% else %}<a href="/patients/{{ assessment.patient_id }}">查看总览</a>{% endif %}</td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4" class="empty">暂无关键证据。</td></tr>
-        {% endfor %}
+        <tr><th>报告编号</th><td>#{{ report_record.report_id }}</td></tr>
+        <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
+        <tr><th>报告版本</th><td>v{{ report_record.current_version }}</td></tr>
       </tbody>
     </table>
-  </section>
-
-  <section class="panel">
-    <h2>AI 评估复核操作</h2>
-    <form class="review-form require-review-comment" method="post" action="/assessments/{{ assessment.assessment_id }}/review">
-      <label>
-        复核医生
-        <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
-      </label>
-      <label>
-        评估复核意见
-        <textarea class="required-review-comment" name="review_comment" rows="5" required placeholder="说明 AI 评估结果是否可信；驳回评估时必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
-      </label>
-      <div class="actions">
-        <button name="action" value="save_comment" type="submit">保存意见</button>
-        <button class="primary requires-review-comment" name="action" value="confirm" type="submit" disabled>通过评估</button>
-        <button class="danger requires-review-comment" name="action" value="reject" type="submit" disabled onclick="return confirm('驳回 AI 评估时必须填写原因，确认驳回？');">驳回评估</button>
-      </div>
-      <p class="form-hint">医生复核的是 AI 评估结果，不是最终报告正文；报告确认在“修改报告正文”页面完成。</p>
-    </form>
   </section>
 </section>
 {% endblock %}

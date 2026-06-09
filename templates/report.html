@@ -4,13 +4,12 @@
   <div class="section-head screen-only">
     <div>
       <h1>报告生成页</h1>
-      <p class="muted">当前页面展示报告正文；AI 评估复核与报告确认状态分开记录。</p>
+      <p class="muted">当前页面展示报告正文；医生可在报告复核页修改正文并确认锁定。</p>
     </div>
     <div class="actions">
       {% if report_record %}
       {% if current_user.role == "医生" %}
-      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">修改报告正文</a>
-      <a class="button" href="/assessments/{{ assessment.assessment_id }}/review">进入复核</a>
+      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">复核报告</a>
       {% endif %}
       {% if current_user.role in ["管理员", "医生"] %}
       <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
@@ -45,12 +44,12 @@
     </section>
 
     <section class="report-section">
-      <h2>二、AI 评估复核与报告确认</h2>
+      <h2>二、医生报告复核与确认</h2>
       <table class="report-table compact">
         <tbody>
-          <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status if report_record else "未生成" }}</td></tr>
+          <tr><th>报告状态</th><td>{{ report_record.report_status if report_record else "未生成" }}</td></tr>
           <tr><th>复核医生</th><td>{{ report_record.reviewer_name if report_record and report_record.reviewer_name else "-" }}</td></tr>
-          <tr><th>复核意见</th><td>{{ report_record.review_comment if report_record and report_record.review_comment else "-" }}</td></tr>
+          <tr><th>医生意见</th><td>{{ report_record.review_comment if report_record and report_record.review_comment else "-" }}</td></tr>
         </tbody>
       </table>
     </section>

@@ -62,11 +62,11 @@
     </section>
 
     <section class="report-section">
-      <h2>三、AI 评估复核与报告确认</h2>
+      <h2>三、医生报告复核与确认</h2>
       <table class="report-table compact">
         <tbody>
-          <tr><th>AI 评估复核状态</th><td>{{ report_record.review_status }}</td></tr>
-          <tr><th>复核意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
+          <tr><th>报告状态</th><td>{{ report_record.report_status }}</td></tr>
+          <tr><th>医生意见</th><td>{{ report_record.review_comment or "-" }}</td></tr>
         </tbody>
       </table>
     </section>

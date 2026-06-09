@@ -214,8 +214,8 @@ class PocFlowTest(unittest.TestCase):
         login(doctor_client)
         doctor_detail = doctor_client.get("/patients/TEST-001")
         self.assertEqual(doctor_detail.status_code, 200)
-        self.assertIn("进入复核", doctor_detail.text)
-        self.assertIn(f'href="/assessments/{assessment_id}/review"', doctor_detail.text)
+        self.assertIn("复核报告", doctor_detail.text)
+        self.assertIn('href="/reports/', doctor_detail.text)
         assessment_page = doctor_client.get(f"/assessments/{assessment_id}")
         self.assertEqual(assessment_page.status_code, 200)
         self.assertIn("重新生成评估", assessment_page.text)
@@ -226,7 +226,7 @@ class PocFlowTest(unittest.TestCase):
         self.assertIn(f'href="/reports/', assessment_page.text)
         doctor_list = doctor_client.get("/patients")
         self.assertEqual(doctor_list.status_code, 200)
-        self.assertIn("进入复核", doctor_list.text)
+        self.assertIn("复核报告", doctor_list.text)
 
         dashboard_page = doctor_client.get("/dashboard")
         self.assertEqual(dashboard_page.status_code, 200)
@@ -299,12 +299,15 @@ class PocFlowTest(unittest.TestCase):
         self.assertEqual(report["report_status"], "草稿")
         self.assertEqual(report["current_version"], 1)
 
-        blocked_confirm = client.post(
+        direct_confirm = client.post(
             f"/api/reports/{report_id}/confirm",
-            json={"reviewer_name": "测试医生", "review_comment": "尚未复核 AI 评估。"},
+            json={"reviewer_name": "测试医生", "review_comment": "报告草稿可作为辅助评估报告。"},
         )
-        self.assertEqual(blocked_confirm.status_code, 400)
-        self.assertIn("需先完成 AI 评估复核", blocked_confirm.text)
+        self.assertEqual(direct_confirm.status_code, 200)
+        self.assertEqual(direct_confirm.json()["report_status"], "已确认")
+
+        edit_unlocked_first = client.get(f"/reports/{report_id}/edit?edit=1")
+        self.assertEqual(edit_unlocked_first.status_code, 200)
 
         edit_response = client.post(
             f"/reports/{report_id}/edit",
@@ -312,6 +315,7 @@ class PocFlowTest(unittest.TestCase):
                 "content": "编辑后的慢阻肺智能辅助评估报告。\n本报告不替代医生临床判断。",
                 "edited_by": "测试医生",
                 "change_summary": "补充复核后的报告正文",
+                "allow_confirmed_edit": "1",
             },
         )
         self.assertEqual(edit_response.status_code, 200)
@@ -323,21 +327,7 @@ class PocFlowTest(unittest.TestCase):
 
         review_page = client.get(f"/assessments/{assessment_id}/review")
         self.assertEqual(review_page.status_code, 200)
-        self.assertIn("AI 评估复核", review_page.text)
-        self.assertIn("复核 AI 智能评估结果是否可信", review_page.text)
-
-        approve_review = client.post(
-            f"/assessments/{assessment_id}/review",
-            data={
-                "action": "confirm",
-                "reviewer_name": "测试医生",
-                "review_comment": "AI 评估结果、证据和安全边界可接受。",
-            },
-        )
-        self.assertEqual(approve_review.status_code, 200)
-        approved = client.get(f"/api/reports/{report_id}").json()
-        self.assertEqual(approved["review_status"], "评估已通过")
-        self.assertEqual(approved["report_status"], "待确认")
+        self.assertIn("医生报告复核", review_page.text)
 
         confirm_response = client.post(
             f"/api/reports/{report_id}/confirm",
@@ -345,7 +335,6 @@ class PocFlowTest(unittest.TestCase):
         )
         self.assertEqual(confirm_response.status_code, 200)
         self.assertEqual(confirm_response.json()["report_status"], "已确认")
-        self.assertEqual(confirm_response.json()["review_status"], "评估已通过")
 
         locked_page = client.get(f"/reports/{report_id}/edit")
         self.assertEqual(locked_page.status_code, 200)
@@ -365,9 +354,8 @@ class PocFlowTest(unittest.TestCase):
         unlocked_page = client.get(f"/reports/{report_id}/edit?edit=1")
         self.assertEqual(unlocked_page.status_code, 200)
         self.assertIn("你正在修改已确认报告", unlocked_page.text)
-        self.assertIn("require-review-comment", unlocked_page.text)
-        self.assertIn("disabled>确认并锁定报告", unlocked_page.text)
-        self.assertIn("disabled formaction", unlocked_page.text)
+        self.assertIn("确认并锁定报告", unlocked_page.text)
+        self.assertNotIn("驳回报告", unlocked_page.text)
 
         confirmed_edit = client.post(
             f"/reports/{report_id}/edit",
@@ -382,36 +370,11 @@ class PocFlowTest(unittest.TestCase):
         edited_after_confirm = client.get(f"/api/reports/{report_id}").json()
         self.assertEqual(edited_after_confirm["current_version"], 3)
         self.assertEqual(edited_after_confirm["report_status"], "待确认")
-        self.assertEqual(edited_after_confirm["review_status"], "评估已通过")
-
-        empty_reject_page = client.post(
-            f"/reports/{report_id}/reject",
-            data={"reviewer_name": "测试医生", "review_comment": ""},
-        )
-        self.assertEqual(empty_reject_page.status_code, 400)
-        self.assertIn("驳回报告必须填写原因", empty_reject_page.text)
-        self.assertIn("报告确认", empty_reject_page.text)
-        self.assertNotIn('{"detail"', empty_reject_page.text)
-
-        empty_reject = client.post(
-            f"/api/reports/{report_id}/reject",
-            json={"reviewer_name": "测试医生", "review_comment": ""},
-        )
-        self.assertEqual(empty_reject.status_code, 400)
-
-        reject_response = client.post(
-            f"/api/reports/{report_id}/reject",
-            json={"reviewer_name": "测试医生", "review_comment": "需要补充关键证据说明。"},
-        )
-        self.assertEqual(reject_response.status_code, 200)
-        self.assertEqual(reject_response.json()["report_status"], "已驳回")
-        self.assertEqual(reject_response.json()["review_status"], "评估已通过")
-        self.assertGreaterEqual(len(reject_response.json()["review_logs"]), 4)
 
         export_page = client.get(f"/reports/{report_id}/export")
         self.assertEqual(export_page.status_code, 200)
         self.assertIn("慢阻肺智能辅助评估报告", export_page.text)
-        self.assertIn("AI 评估复核与报告确认", export_page.text)
+        self.assertIn("医生报告复核与确认", export_page.text)
         self.assertIn("版本追溯", export_page.text)
 
     def test_api_imports_new_template_xlsx_upload(self):

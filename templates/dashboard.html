@@ -4,7 +4,7 @@
   <div class="section-head">
     <div>
       <h1>医生工作台</h1>
-      <p class="muted">按临床任务处理患者：先看待办，再进入评估、复核、报告确认和导出。</p>
+      <p class="muted">按临床任务处理患者：生成智能评估后，直接复核报告正文、确认并导出。</p>
     </div>
     <a class="button" href="/patients">查看全部患者</a>
   </div>
@@ -16,14 +16,14 @@
       <em>需要生成智能评估</em>
     </a>
     <a class="task-card primary-task" href="/patients?task=need_review">
-      <span>待复核</span>
+      <span>待复核报告</span>
       <strong>{{ counts.need_review }}</strong>
-      <em>需要医生确认或驳回</em>
+      <em>需要医生修改报告正文</em>
     </a>
-    <a class="task-card warning-task" href="/patients?task=rejected">
-      <span>已驳回</span>
-      <strong>{{ counts.rejected }}</strong>
-      <em>需要修改报告</em>
+    <a class="task-card warning-task" href="/patients?task=need_confirm">
+      <span>待确认报告</span>
+      <strong>{{ counts.need_confirm }}</strong>
+      <em>需要确认并锁定</em>
     </a>
     <a class="task-card danger-task" href="/patients?task=high_risk">
       <span>高风险</span>
@@ -41,7 +41,7 @@
     <div class="section-head compact-head">
       <div>
         <h2>今日优先处理</h2>
-        <p class="muted">默认展示待评估、待复核、已驳回和高风险患者。</p>
+        <p class="muted">默认展示待评估、待复核报告、待确认报告和高风险患者。</p>
       </div>
       <a class="button" href="/patients?task=todo">查看全部待办</a>
     </div>
@@ -51,7 +51,6 @@
           <th>患者ID</th>
           <th>风险</th>
           <th>评估状态</th>
-          <th>AI 评估复核状态</th>
           <th>报告状态</th>
           <th>下一步</th>
         </tr>
@@ -62,12 +61,11 @@
           <td><a href="/patients/{{ patient.patient_id }}">{{ patient.patient_id }}</a></td>
           <td><span class="badge risk-{{ patient.risk_level }}">{{ patient.risk_level }}</span></td>
           <td>{{ patient.assessment_status }}</td>
-          <td>{{ patient.review_status }}</td>
           <td>{{ patient.report_status }}</td>
           <td><a class="button table-primary-action" href="{{ patient.next_url }}">{{ patient.next_label }}</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="empty">暂无需要医生处理的患者。</td></tr>
+        <tr><td colspan="5" class="empty">暂无需要医生处理的患者。</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -77,20 +75,20 @@
     <div class="section-head compact-head">
       <div>
         <h2>高风险患者</h2>
-        <p class="muted">优先查看关键证据、AI 评估复核状态和报告状态。</p>
+        <p class="muted">优先查看关键证据、智能评估结果和报告状态。</p>
       </div>
       <a class="button" href="/patients?task=high_risk">查看高风险列表</a>
     </div>
     <table class="data-table">
       <thead>
-        <tr><th>患者ID</th><th>评估状态</th><th>AI 评估复核状态</th><th>下一步</th></tr>
+        <tr><th>患者ID</th><th>评估状态</th><th>报告状态</th><th>下一步</th></tr>
       </thead>
       <tbody>
         {% for patient in high_risk_patients %}
         <tr>
           <td><a href="/patients/{{ patient.patient_id }}">{{ patient.patient_id }}</a></td>
           <td>{{ patient.assessment_status }}</td>
-          <td>{{ patient.review_status }}</td>
+          <td>{{ patient.report_status }}</td>
           <td><a class="button table-primary-action" href="{{ patient.next_url }}">{{ patient.next_label }}</a></td>
         </tr>
         {% else %}

@@ -4,7 +4,7 @@
   <div class="section-head">
     <div>
       <h1>智能评估结果：{{ patient.patient_id }}</h1>
-      <p class="muted">展示数据质量、摘要、表型、风险、模型调用、关键证据和临床复核状态。</p>
+      <p class="muted">展示数据质量、摘要、表型、风险、模型调用、关键证据和报告状态。</p>
     </div>
     {% if current_user.role in ["管理员", "医生"] %}
     <div class="workflow-primary-actions">
@@ -46,13 +46,9 @@
 
   {% if assessment %}
   <section class="panel">
-    <h2>AI 评估复核与报告状态</h2>
+    <h2>报告状态</h2>
     <table class="info-table">
       <tbody>
-        <tr>
-          <th>AI 评估复核状态</th>
-          <td>{{ report_record.review_status if report_record else "未生成" }}</td>
-        </tr>
         <tr>
           <th>报告状态</th>
           <td>{{ report_record.report_status if report_record else "未生成" }}</td>
@@ -69,8 +65,7 @@
     </table>
     {% if report_record and current_user.role == "医生" %}
     <div class="actions compact-actions">
-      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/review">进入复核</a>
-      <a class="button" href="/reports/{{ report_record.report_id }}/edit">修改报告正文</a>
+      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit">复核报告</a>
       <a class="button" href="/reports/{{ report_record.report_id }}/export">导出报告</a>
     </div>
     {% elif report_record and current_user.role == "管理员" %}

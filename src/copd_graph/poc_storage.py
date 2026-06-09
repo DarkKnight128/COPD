@@ -1162,8 +1162,6 @@ def confirm_report(
     report = get_report(connection, report_id)
     if report is None:
         raise KeyError(f"Unknown report_id: {report_id}")
-    if report.get("review_status") != "评估已通过":
-        raise ValueError("需先完成 AI 评估复核并通过后，才能确认报告")
     now = local_isoformat(timespec="seconds")
     reviewer = (reviewer_name or "医生").strip()
     comment = (review_comment or "").strip()
@@ -1920,6 +1918,8 @@ def _report_from_row(connection: sqlite3.Connection, row: sqlite3.Row) -> Dict[s
         report["review_status"] = "评估已驳回"
     if report.get("report_status") == "待复核":
         report["report_status"] = "待确认" if report.get("review_status") == "评估已通过" else "草稿"
+    elif report.get("report_status") == "已驳回":
+        report["report_status"] = "草稿"
     versions = _report_versions(connection, report["report_id"])
     logs = _report_review_logs(connection, report["report_id"])
     current = next(
