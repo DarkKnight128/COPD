@@ -31,5 +31,27 @@
     <main class="page">
       {% block content %}{% endblock %}
     </main>
+    <script>
+      window.addEventListener("pageshow", function (event) {
+        if (event.persisted) {
+          window.location.reload();
+        }
+      });
+      document.querySelectorAll(".require-review-comment").forEach(function (form) {
+        var input = form.querySelector(".required-review-comment");
+        var buttons = form.querySelectorAll(".requires-review-comment");
+        if (!input || !buttons.length) {
+          return;
+        }
+        var refreshButtons = function () {
+          var hasComment = input.value.trim().length > 0;
+          buttons.forEach(function (button) {
+            button.disabled = !hasComment;
+          });
+        };
+        input.addEventListener("input", refreshButtons);
+        refreshButtons();
+      });
+    </script>
   </body>
 </html>

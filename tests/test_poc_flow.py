@@ -176,6 +176,7 @@ class PocFlowTest(unittest.TestCase):
         self.assertIn("type=\"file\"", import_page.text)
 
         self.assertEqual(client.get("/patients").status_code, 200)
+        self.assertIn("no-store", client.get("/patients").headers.get("Cache-Control", ""))
         self.assertEqual(client.get("/patients/TEST-001").status_code, 200)
         self.assertEqual(client.get("/patients/TEST-001/timeline").status_code, 200)
 
@@ -192,6 +193,19 @@ class PocFlowTest(unittest.TestCase):
         report_response = client.post(f"/api/assessments/{assessment_id}/report")
         self.assertEqual(report_response.status_code, 200)
         self.assertIn("辅助评估报告草稿", report_response.json()["report_draft"])
+
+        detail_page = client.get("/patients/TEST-001")
+        self.assertEqual(detail_page.status_code, 200)
+        self.assertIn("查看最近评估", detail_page.text)
+        self.assertIn("查看报告", detail_page.text)
+        self.assertIn("最近评估与报告摘要", detail_page.text)
+        self.assertIn("报告摘要", detail_page.text)
+        self.assertIn("重新 API 智能评估", detail_page.text)
+
+        list_page = client.get("/patients")
+        self.assertEqual(list_page.status_code, 200)
+        self.assertIn(f"/assessments/{assessment_id}/report", list_page.text)
+        self.assertIn("导出", list_page.text)
 
     def test_local_rule_assessment_mode_skips_qwen_api(self):
         from copd_graph import web_app
@@ -278,6 +292,51 @@ class PocFlowTest(unittest.TestCase):
         )
         self.assertEqual(confirm_response.status_code, 200)
         self.assertEqual(confirm_response.json()["report_status"], "已确认")
+
+        locked_page = client.get(f"/reports/{report_id}/edit")
+        self.assertEqual(locked_page.status_code, 200)
+        self.assertIn("报告正文已锁定", locked_page.text)
+        self.assertIn("修改报告", locked_page.text)
+
+        blocked_edit = client.post(
+            f"/reports/{report_id}/edit",
+            data={
+                "content": "未点击修改按钮的编辑不应保存。",
+                "edited_by": "测试医生",
+                "change_summary": "绕过锁定",
+            },
+        )
+        self.assertEqual(blocked_edit.status_code, 400)
+
+        unlocked_page = client.get(f"/reports/{report_id}/edit?edit=1")
+        self.assertEqual(unlocked_page.status_code, 200)
+        self.assertIn("你正在修改已确认报告", unlocked_page.text)
+        self.assertIn("require-review-comment", unlocked_page.text)
+        self.assertIn("disabled>确认报告", unlocked_page.text)
+        self.assertIn("disabled formaction", unlocked_page.text)
+
+        confirmed_edit = client.post(
+            f"/reports/{report_id}/edit",
+            data={
+                "content": "修改已确认报告后生成的新版本。",
+                "edited_by": "测试医生",
+                "change_summary": "确认后再次修改",
+                "allow_confirmed_edit": "1",
+            },
+        )
+        self.assertEqual(confirmed_edit.status_code, 200)
+        edited_after_confirm = client.get(f"/api/reports/{report_id}").json()
+        self.assertEqual(edited_after_confirm["current_version"], 3)
+        self.assertEqual(edited_after_confirm["report_status"], "待复核")
+
+        empty_reject_page = client.post(
+            f"/reports/{report_id}/reject",
+            data={"reviewer_name": "测试医生", "review_comment": ""},
+        )
+        self.assertEqual(empty_reject_page.status_code, 400)
+        self.assertIn("驳回报告必须填写原因", empty_reject_page.text)
+        self.assertIn("确认或驳回", empty_reject_page.text)
+        self.assertNotIn('{"detail"', empty_reject_page.text)
 
         empty_reject = client.post(
             f"/api/reports/{report_id}/reject",

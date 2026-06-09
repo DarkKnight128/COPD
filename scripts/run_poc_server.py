@@ -11,4 +11,4 @@ if str(SRC_DIR) not in sys.path:
 
 
 if __name__ == "__main__":
-    uvicorn.run("copd_graph.web_app:app", host="127.0.0.1", port=8001, reload=False)
+    uvicorn.run("copd_graph.web_app:app", host="127.0.0.1", port=8000, reload=False)

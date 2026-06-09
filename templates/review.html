@@ -63,20 +63,21 @@
 
   <section class="panel">
     <h2>复核操作</h2>
-    <form class="review-form" method="post" action="/assessments/{{ assessment.assessment_id }}/review">
+    <form class="review-form require-review-comment" method="post" action="/assessments/{{ assessment.assessment_id }}/review">
       <label>
         复核医生
         <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
       </label>
       <label>
         复核意见
-        <textarea name="review_comment" rows="5" placeholder="填写确认意见、修改说明或驳回原因。">{{ report_record.review_comment or "" }}</textarea>
+        <textarea class="required-review-comment" name="review_comment" rows="5" required placeholder="填写确认意见、修改说明或驳回原因。">{{ report_record.review_comment or "" }}</textarea>
       </label>
       <div class="actions">
         <button name="action" value="save_comment" type="submit">保存意见</button>
-        <button class="primary" name="action" value="confirm" type="submit">确认结果</button>
-        <button class="danger" name="action" value="reject" type="submit" onclick="return confirm('驳回时必须填写原因，确认驳回？');">驳回结果</button>
+        <button class="primary requires-review-comment" name="action" value="confirm" type="submit" disabled>确认结果</button>
+        <button class="danger requires-review-comment" name="action" value="reject" type="submit" disabled onclick="return confirm('驳回时必须填写原因，确认驳回？');">驳回结果</button>
       </div>
+      <p class="form-hint">请先填写复核意见或驳回原因，才能确认或驳回结果。</p>
     </form>
   </section>
 </section>

@@ -8,6 +8,19 @@
     </div>
     {% if current_user.role in ["管理员", "医生"] %}
     <div class="assessment-actions">
+      {% if assessment %}
+      {% if report_record %}
+      <a class="button primary" href="/assessments/{{ assessment.assessment_id }}/report">查看报告</a>
+      {% endif %}
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="local_rules">
+        <button type="submit">重新本地规则评估</button>
+      </form>
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="api">
+        <button type="submit">重新 API 智能评估</button>
+      </form>
+      {% else %}
       <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
         <input type="hidden" name="assessment_mode" value="local_rules">
         <button type="submit">本地规则评估</button>
@@ -16,6 +29,7 @@
         <input type="hidden" name="assessment_mode" value="api">
         <button class="primary" type="submit">API 智能评估</button>
       </form>
+      {% endif %}
     </div>
     {% endif %}
   </div>

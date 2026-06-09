@@ -105,8 +105,14 @@
               {% if patient.latest_assessment_id %}
               <a href="/assessments/{{ patient.latest_assessment_id }}">评估</a>
               {% endif %}
+              {% if patient.latest_report_id %}
+              <a href="/assessments/{{ patient.latest_assessment_id }}/report">报告</a>
+              {% endif %}
               {% if patient.latest_report_id and current_user.role == "医生" %}
-              <a href="/reports/{{ patient.latest_report_id }}/edit">报告</a>
+              <a href="/reports/{{ patient.latest_report_id }}/edit">编辑</a>
+              {% endif %}
+              {% if patient.latest_report_id and current_user.role in ["管理员", "医生"] %}
+              <a href="/reports/{{ patient.latest_report_id }}/export">导出</a>
               {% endif %}
               {% if current_user.role == "管理员" %}
               <button class="link-danger" type="submit" formaction="/patients/{{ patient.patient_id }}/delete" onclick="return confirm('确认删除患者 {{ patient.patient_id }} 的全部数据？');">删除</button>

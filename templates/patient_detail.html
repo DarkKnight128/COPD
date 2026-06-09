@@ -6,8 +6,13 @@
       <h1>患者总览：{{ patient.patient_id }}</h1>
       <p class="muted">核心信息、纵向病程档案、智能评估与报告复核入口。</p>
     </div>
-    {% if current_user.role in ["管理员", "医生"] %}
     <div class="assessment-actions">
+      {% if latest_assessment %}
+      <a class="button primary" href="/assessments/{{ latest_assessment.assessment_id }}">查看最近评估</a>
+      {% if latest_report %}
+      <a class="button" href="/assessments/{{ latest_assessment.assessment_id }}/report">查看报告</a>
+      {% endif %}
+      {% elif current_user.role in ["管理员", "医生"] %}
       <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
         <input type="hidden" name="assessment_mode" value="local_rules">
         <button type="submit">本地规则评估</button>
@@ -16,8 +21,8 @@
         <input type="hidden" name="assessment_mode" value="api">
         <button class="primary" type="submit">API 智能评估</button>
       </form>
+      {% endif %}
     </div>
-    {% endif %}
   </div>
 
   <div class="grid">
@@ -53,9 +58,71 @@
     </div>
   </div>
 
+  {% if latest_assessment %}
+  <section class="panel latest-assessment-panel">
+    <div class="section-head compact-head">
+      <div>
+        <h2>最近评估与报告摘要</h2>
+        <p class="muted">展示当前已保存的最近一次评估和对应报告，不会因为进入患者详情页而重新生成。</p>
+      </div>
+      <div class="assessment-actions">
+        <a class="button primary" href="/assessments/{{ latest_assessment.assessment_id }}">查看完整评估</a>
+        {% if latest_report %}
+        <a class="button" href="/assessments/{{ latest_assessment.assessment_id }}/report">查看完整报告</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="table-grid">
+      <table class="info-table">
+        <tbody>
+          <tr><th>评估时间</th><td>{{ latest_assessment.created_at or "未记录" }}</td></tr>
+          <tr><th>评估方式</th><td>{{ "本地规则评估" if latest_assessment.assessment_mode == "local_rules" else "API 智能评估" }}</td></tr>
+          <tr><th>主要表型</th><td>{{ latest_assessment.phenotype.main_phenotype }}</td></tr>
+          <tr><th>急性加重风险</th><td><span class="badge risk-{{ latest_assessment.risk_assessment.acute_exacerbation_risk }}">{{ latest_assessment.risk_assessment.acute_exacerbation_risk }}</span></td></tr>
+          <tr><th>再住院风险</th><td><span class="badge risk-{{ latest_assessment.risk_assessment.readmission_risk }}">{{ latest_assessment.risk_assessment.readmission_risk }}</span></td></tr>
+          <tr><th>死亡风险</th><td><span class="badge risk-{{ latest_assessment.risk_assessment.mortality_risk }}">{{ latest_assessment.risk_assessment.mortality_risk }}</span></td></tr>
+        </tbody>
+      </table>
+
+      <table class="info-table">
+        <tbody>
+          <tr><th>报告状态</th><td>{{ latest_report.report_status if latest_report else "未生成" }}</td></tr>
+          <tr><th>复核状态</th><td>{{ latest_report.review_status if latest_report else "未生成" }}</td></tr>
+          <tr><th>报告版本</th><td>{% if latest_report %}v{{ latest_report.current_version }}{% else %}-{% endif %}</td></tr>
+          <tr><th>医生意见</th><td>{{ latest_report.review_comment if latest_report and latest_report.review_comment else "-" }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    {% if latest_report %}
+    <div class="report-preview">
+      <h3>报告摘要</h3>
+      <div>{{ latest_report.current_content }}</div>
+    </div>
+    {% endif %}
+
+    <div class="actions compact-actions">
+      {% if latest_report and current_user.role == "医生" %}
+      <a class="button" href="/reports/{{ latest_report.report_id }}/edit">编辑报告</a>
+      {% endif %}
+      {% if latest_report and current_user.role in ["管理员", "医生"] %}
+      <a class="button" href="/reports/{{ latest_report.report_id }}/export">导出报告</a>
+      {% endif %}
+    </div>
+  </section>
+  {% endif %}
+
   <div class="actions">
     <a class="button" href="/patients/{{ patient.patient_id }}/timeline">查看病程时间轴</a>
+    {% if latest_assessment %}
+    <a class="button" href="/assessments/{{ latest_assessment.assessment_id }}">查看评估结果</a>
+    {% else %}
     <a class="button" href="/patients/{{ patient.patient_id }}/assessment">查看评估结果</a>
+    {% endif %}
+    {% if latest_report %}
+    <a class="button" href="/assessments/{{ latest_assessment.assessment_id }}/report">查看报告</a>
+    {% endif %}
     {% if latest_report and current_user.role == "医生" %}
     <a class="button" href="/reports/{{ latest_report.report_id }}/edit">编辑报告</a>
     {% endif %}
@@ -63,6 +130,23 @@
     <a class="button" href="/reports/{{ latest_report.report_id }}/export">导出报告</a>
     {% endif %}
   </div>
+
+  {% if latest_assessment and current_user.role in ["管理员", "医生"] %}
+  <section class="panel rerun-assessment-panel">
+    <h2>重新评估</h2>
+    <p class="muted">患者数据更新后可以重新生成评估；旧评估和报告仍可通过历史记录追溯。</p>
+    <div class="assessment-actions assessment-actions-left">
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="local_rules">
+        <button type="submit">重新本地规则评估</button>
+      </form>
+      <form method="post" action="/patients/{{ patient.patient_id }}/assessment">
+        <input type="hidden" name="assessment_mode" value="api">
+        <button type="submit">重新 API 智能评估</button>
+      </form>
+    </div>
+  </section>
+  {% endif %}
 
   <div class="panel">
     <h2>纵向病程档案</h2>

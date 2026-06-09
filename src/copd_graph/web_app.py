@@ -72,10 +72,27 @@ CLINICAL_ROLES = {"管理员", "医生"}
 DOCTOR_ROLES = {"医生"}
 
 
-def render_template(request: Request, template_name: str, context: Dict[str, Any]) -> HTMLResponse:
+@app.middleware("http")
+async def prevent_stale_pages(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/patients", "/assessments", "/reports")):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+def render_template(
+    request: Request,
+    template_name: str,
+    context: Dict[str, Any],
+    status_code: int = 200,
+) -> HTMLResponse:
     payload = dict(context)
     payload["current_user"] = get_current_user(request)
-    return templates.TemplateResponse(request, template_name, payload)
+    return templates.TemplateResponse(
+        request, template_name, payload, status_code=status_code
+    )
 
 
 def sign_session(user_id: int | str) -> str:
@@ -666,7 +683,7 @@ def submit_review(
 
 
 @app.get("/reports/{report_id}/edit", response_class=HTMLResponse)
-def report_edit_page(request: Request, report_id: int) -> Any:
+def report_edit_page(request: Request, report_id: int, edit: str = "") -> Any:
     current_user = require_page_role(request, DOCTOR_ROLES)
     if isinstance(current_user, RedirectResponse):
         return current_user
@@ -675,10 +692,16 @@ def report_edit_page(request: Request, report_id: int) -> Any:
         assessment = get_assessment(connection, report["assessment_id"]) if report else None
     if report is None or assessment is None:
         raise HTTPException(status_code=404, detail="Report not found")
+    report_locked = report.get("report_status") == "已确认" and edit != "1"
     return render_template(
         request,
         "report_edit.html",
-        {"report_record": report, "assessment": assessment},
+        {
+            "report_record": report,
+            "assessment": assessment,
+            "report_locked": report_locked,
+            "edit_unlocked": edit == "1",
+        },
     )
 
 
@@ -689,6 +712,7 @@ def save_report_edit(
     content: str = Form(...),
     edited_by: str = Form(default=""),
     change_summary: str = Form(default=""),
+    allow_confirmed_edit: str = Form(default=""),
 ) -> RedirectResponse:
     current_user = require_page_role(request, DOCTOR_ROLES)
     if isinstance(current_user, RedirectResponse):
@@ -696,6 +720,14 @@ def save_report_edit(
     editor = edited_by or current_user["display_name"]
     with connect(DEFAULT_DB_PATH) as connection:
         try:
+            existing_report = get_report(connection, report_id)
+            if existing_report is None:
+                raise KeyError(f"Unknown report_id: {report_id}")
+            if (
+                existing_report.get("report_status") == "已确认"
+                and allow_confirmed_edit != "1"
+            ):
+                raise ValueError("已确认报告需要先点击“修改报告”后才能继续编辑。")
             report = save_report_version(
                 connection,
                 report_id,
@@ -766,7 +798,7 @@ def reject_report_page(
     report_id: int,
     reviewer_name: str = Form(default=""),
     review_comment: str = Form(default=""),
-) -> RedirectResponse:
+) -> Any:
     current_user = require_page_role(request, DOCTOR_ROLES)
     if isinstance(current_user, RedirectResponse):
         return current_user
@@ -798,7 +830,22 @@ def reject_report_page(
                 result="失败",
                 failure_reason=str(error),
             )
-            raise HTTPException(status_code=400, detail=str(error)) from error
+            report = get_report(connection, report_id)
+            assessment = get_assessment(connection, report["assessment_id"]) if report else None
+            if report is None or assessment is None:
+                raise HTTPException(status_code=404, detail="Report not found") from error
+            return render_template(
+                request,
+                "report_edit.html",
+                {
+                    "report_record": report,
+                    "assessment": assessment,
+                    "report_locked": False,
+                    "edit_unlocked": False,
+                    "error_message": str(error),
+                },
+                status_code=400,
+            )
     record_audit(current_user, "reject_report", object_type="report", object_id=str(report_id))
     return RedirectResponse(url=f"/reports/{report['report_id']}/edit", status_code=303)
 

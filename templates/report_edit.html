@@ -4,7 +4,7 @@
   <div class="section-head">
     <div>
       <h1>报告编辑：{{ assessment.patient_id }}</h1>
-      <p class="muted">每次保存都会生成新版本；已确认报告再次编辑后会回到待复核状态。</p>
+      <p class="muted">每次保存都会生成新版本；已确认报告需要先点击“修改报告”才会进入编辑状态。</p>
     </div>
     <div class="actions">
       <a class="button" href="/assessments/{{ assessment.assessment_id }}">返回评估结果</a>
@@ -26,8 +26,25 @@
   </section>
 
   <section class="panel report-editor-panel">
-    <h2>编辑报告正文</h2>
+    <h2>{{ "报告正文已锁定" if report_locked else "编辑报告正文" }}</h2>
+    {% if report_locked %}
+    <div class="locked-report-notice">
+      报告已确认。为避免误改，当前正文处于锁定状态；如需继续修改，请点击“修改报告”，保存后系统会生成新版本并将报告状态改回待复核。
+    </div>
+    <div class="report-body-editor locked-report-body">{{ report_record.current_content }}</div>
+    <div class="actions">
+      <a class="button primary" href="/reports/{{ report_record.report_id }}/edit?edit=1">修改报告</a>
+    </div>
+    {% else %}
+    {% if edit_unlocked and report_record.report_status == "已确认" %}
+    <div class="locked-report-notice warning">
+      你正在修改已确认报告。保存后会生成新版本，并回到待复核状态。
+    </div>
+    {% endif %}
     <form class="report-editor" method="post" action="/reports/{{ report_record.report_id }}/edit">
+      {% if edit_unlocked and report_record.report_status == "已确认" %}
+      <input type="hidden" name="allow_confirmed_edit" value="1">
+      {% endif %}
       <div class="editor-meta">
         <label>
           编辑人
@@ -43,25 +60,37 @@
         <button class="primary" type="submit">保存为新版本</button>
       </div>
     </form>
+    {% endif %}
   </section>
 
+  {% if not report_locked %}
   <section class="panel review-decision-panel">
     <h2>确认或驳回</h2>
-    <form class="review-decision-form" method="post" action="/reports/{{ report_record.report_id }}/confirm">
+    {% if error_message %}
+    <div class="alert danger-alert">{{ error_message }}</div>
+    {% endif %}
+    <form class="review-decision-form require-review-comment" method="post" action="/reports/{{ report_record.report_id }}/confirm">
       <label>
         复核医生
         <input name="reviewer_name" value="{{ report_record.reviewer_name or '' }}" placeholder="例如：张医生">
       </label>
       <label>
         复核意见 / 驳回原因
-        <textarea class="review-comment-editor" name="review_comment" placeholder="确认报告时填写复核意见；驳回报告时这里必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
+        <textarea class="review-comment-editor required-review-comment" name="review_comment" required placeholder="确认报告时填写复核意见；驳回报告时这里必须写明原因。">{{ report_record.review_comment or "" }}</textarea>
       </label>
       <div class="actions">
-        <button class="primary" type="submit">确认报告</button>
-        <button class="danger" type="submit" formaction="/reports/{{ report_record.report_id }}/reject" onclick="return confirm('驳回报告需要填写原因，确认驳回？');">驳回报告</button>
+        <button class="primary requires-review-comment" type="submit" disabled>确认报告</button>
+        <button class="danger requires-review-comment" type="submit" disabled formaction="/reports/{{ report_record.report_id }}/reject" onclick="return confirm('驳回报告需要填写原因，确认驳回？');">驳回报告</button>
       </div>
+      <p class="form-hint">请先填写复核意见或驳回原因，才能确认或驳回报告。</p>
     </form>
   </section>
+  {% else %}
+  <section class="panel review-decision-panel">
+    <h2>确认状态</h2>
+    <p class="muted">当前报告已经确认。若需要重新确认、驳回或修改意见，请先点击上方“修改报告”生成新版本。</p>
+  </section>
+  {% endif %}
 
   <section class="panel">
     <h2>版本记录</h2>
